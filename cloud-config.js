@@ -4,7 +4,7 @@
 */
 window.DISCIPLINE_OS_CLOUD_CONFIG = {
   enabled: true,
-  webAppUrl: "https://script.google.com/macros/s/AKfycbycegaCo25lA5XuQbUyWFtm5k1FzlubvOuaUBMr-nGO7lVl3_WMySMvA4uaDdOn3O_v/exec",
+  webAppUrl: "https://script.google.com/macros/s/AKfycbzCND9y0Ayp9sNp3vdfiu0oKG5E-PlmoLat_gQVBATw-i2UXrsmlRLT26AUOymRn5v7/exec",
   userId: "default",
 };
 
