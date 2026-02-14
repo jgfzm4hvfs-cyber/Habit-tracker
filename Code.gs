@@ -1,7 +1,8 @@
 const SHEET_NAME = 'state_store';
 const HEADERS = ['user_id', 'updated_at', 'state_json'];
-const TOKEN_PROPERTY = 'HABIT_TRACKER_API_TOKEN';
 const SPREADSHEET_ID_PROPERTY = 'HABIT_TRACKER_SPREADSHEET_ID';
+const ALLOWED_EMAIL_PROPERTY = 'HABIT_TRACKER_ALLOWED_EMAIL';
+const GOOGLE_CLIENT_ID_PROPERTY = 'HABIT_TRACKER_GOOGLE_CLIENT_ID';
 
 function doGet(e) {
   return handleRequest_(e);
@@ -15,10 +16,10 @@ function handleRequest_(e) {
   try {
     const req = parseRequest_(e);
     const action = String(req.action || '').trim();
-    const token = String(req.token || '').trim();
+    const idToken = String(req.idToken || '').trim();
     const userId = sanitizeUserId_(req.userId || 'default');
 
-    assertAuthorized_(token);
+    assertAuthorized_(idToken);
     ensureSheet_();
 
     if (action === 'ping') {
@@ -98,14 +99,73 @@ function parseRequest_(e) {
   return merged;
 }
 
-function assertAuthorized_(token) {
-  const expected = String(PropertiesService.getScriptProperties().getProperty(TOKEN_PROPERTY) || '').trim();
-  if (!expected) {
-    throw new Error('Server token not configured');
+function assertAuthorized_(idToken) {
+  const allowedEmail = String(
+    PropertiesService.getScriptProperties().getProperty(ALLOWED_EMAIL_PROPERTY) || '',
+  ).trim().toLowerCase();
+  if (!allowedEmail) {
+    throw new Error('Server email allowlist not configured');
   }
-  if (!token || token !== expected) {
+
+  const expectedClientId = String(
+    PropertiesService.getScriptProperties().getProperty(GOOGLE_CLIENT_ID_PROPERTY) || '',
+  ).trim();
+  if (!expectedClientId) {
+    throw new Error('Server Google Client ID not configured');
+  }
+
+  if (!idToken) {
     throw new Error('Unauthorized');
   }
+
+  const tokenInfo = verifyGoogleIdToken_(idToken);
+  const tokenEmail = String(tokenInfo.email || '').trim().toLowerCase();
+  const tokenAudience = String(tokenInfo.aud || '').trim();
+  const emailVerified = String(tokenInfo.email_verified || '').toLowerCase() === 'true';
+  const expSeconds = Number(tokenInfo.exp || 0);
+
+  if (!tokenEmail || !emailVerified) {
+    throw new Error('Unauthorized');
+  }
+  if (tokenAudience !== expectedClientId) {
+    throw new Error('Unauthorized');
+  }
+  if (tokenEmail !== allowedEmail) {
+    throw new Error('Unauthorized');
+  }
+  if (!Number.isFinite(expSeconds) || expSeconds <= Math.floor(Date.now() / 1000) - 30) {
+    throw new Error('Unauthorized');
+  }
+}
+
+function verifyGoogleIdToken_(idToken) {
+  const endpoint = 'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(String(idToken));
+  let response;
+  try {
+    response = UrlFetchApp.fetch(endpoint, {
+      method: 'get',
+      muteHttpExceptions: true,
+    });
+  } catch (error) {
+    throw new Error('Auth verification failed');
+  }
+
+  if (!response || response.getResponseCode() !== 200) {
+    throw new Error('Unauthorized');
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(response.getContentText() || '{}');
+  } catch (error) {
+    throw new Error('Unauthorized');
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Unauthorized');
+  }
+
+  return parsed;
 }
 
 function getSpreadsheet_() {

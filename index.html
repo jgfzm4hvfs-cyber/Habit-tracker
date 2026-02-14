@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#151515" />
     <title>Discipline OS</title>
     <link rel="manifest" href="./manifest.webmanifest" />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -65,6 +66,7 @@
           </div>
           <div class="header-tools">
             <span id="syncBadge" class="sync-badge local">Local only</span>
+            <span id="authBadge" class="sync-badge local">Not signed in</span>
             <button id="manageHabitsBtn" class="btn secondary">Manage Habits</button>
             <button id="quickStrengthBtn" class="btn primary">Toggle Strength Training</button>
           </div>
@@ -124,11 +126,14 @@
           placeholder="https://script.google.com/macros/s/xxxx/exec"
         />
 
-        <label for="cloudApiToken">API token</label>
-        <input id="cloudApiToken" type="password" placeholder="Same token as Apps Script" />
-
         <label for="cloudUserId">User ID</label>
         <input id="cloudUserId" type="text" value="default" placeholder="default" />
+
+        <div class="auth-panel">
+          <p id="authStatusText" class="muted">Google sign-in required for sync.</p>
+          <div id="googleSignInButton"></div>
+          <button id="signOutBtn" class="btn ghost" type="button">Sign out</button>
+        </div>
 
         <div class="button-row">
           <button id="saveSyncBtn" class="btn primary" type="button">Save</button>
@@ -174,6 +179,6 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="./cloud-config.js?v=20260214"></script>
-    <script src="./app.js?v=20260214d" defer></script>
+    <script src="./app.js?v=20260214e" defer></script>
   </body>
 </html>

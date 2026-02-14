@@ -5,6 +5,10 @@
 window.DISCIPLINE_OS_CLOUD_CONFIG = {
   enabled: false,
   webAppUrl: "",
-  apiToken: "",
   userId: "default",
+};
+
+window.DISCIPLINE_OS_AUTH_CONFIG = {
+  googleClientId: "",
+  allowedEmail: "",
 };

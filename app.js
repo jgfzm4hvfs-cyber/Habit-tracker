@@ -24,10 +24,14 @@
   const FALLBACK_CLOUD_BOOT_CONFIG = {
     enabled: false,
     webAppUrl: "",
-    apiToken: "",
     userId: "default",
   };
+  const FALLBACK_AUTH_CONFIG = {
+    googleClientId: "",
+    allowedEmail: "",
+  };
   const CLOUD_BOOT_CONFIG = readCloudBootConfig();
+  const AUTH_CONFIG = readAuthConfig();
 
   const DEFAULT_HABITS = [
     {
@@ -143,6 +147,7 @@
     mainSubheading: byId("mainSubheading"),
     periodLabel: byId("periodLabel"),
     syncBadge: byId("syncBadge"),
+    authBadge: byId("authBadge"),
 
     modeButtons: Array.from(document.querySelectorAll(".mode-btn")),
     viewButtons: Array.from(document.querySelectorAll(".view-btn")),
@@ -179,7 +184,6 @@
 
     cloudEnabled: byId("cloudEnabled"),
     cloudWebAppUrl: byId("cloudWebAppUrl"),
-    cloudApiToken: byId("cloudApiToken"),
     cloudUserId: byId("cloudUserId"),
     saveSyncBtn: byId("saveSyncBtn"),
     testSyncBtn: byId("testSyncBtn"),
@@ -187,6 +191,9 @@
     pushSyncBtn: byId("pushSyncBtn"),
     syncStatusText: byId("syncStatusText"),
     syncLastText: byId("syncLastText"),
+    authStatusText: byId("authStatusText"),
+    googleSignInButton: byId("googleSignInButton"),
+    signOutBtn: byId("signOutBtn"),
 
     bootOverlay: byId("bootOverlay"),
     bootOverlayText: byId("bootOverlayText"),
@@ -197,6 +204,7 @@
 
   function initialize() {
     bindEvents();
+    initializeGoogleAuth();
 
     const shouldBootFromCloud = canUseCloudSync();
     if (shouldBootFromCloud) {
@@ -401,6 +409,7 @@
     refs.openSyncBtn.addEventListener("click", () => {
       refs.syncModal.showModal();
       renderSyncPanel();
+      renderGoogleSignInButton();
     });
 
     refs.closeSyncBtn.addEventListener("click", () => {
@@ -425,12 +434,11 @@
     refs.saveSyncBtn.addEventListener("click", () => {
       const config = readCloudInputs();
       state.cloud.webAppUrl = config.webAppUrl;
-      state.cloud.apiToken = config.apiToken;
       state.cloud.userId = config.userId;
       persistState({ skipCloud: true });
 
       if (!canUseCloudSync()) {
-        updateSyncStatus("error", "Missing URL or token");
+        updateSyncStatus("error", "Missing URL or Google sign-in");
         renderSyncPanel();
         return;
       }
@@ -446,6 +454,10 @@
       if (ok) {
         showToast("Cloud connection works.");
       }
+    });
+
+    refs.signOutBtn.addEventListener("click", () => {
+      signOutGoogle();
     });
 
     refs.pullSyncBtn.addEventListener("click", async () => {
@@ -482,6 +494,7 @@
     refs.quickStrengthBtn.textContent = strengthHabit ? `Toggle ${strengthHabit.name}` : "No Strength Habit";
 
     updateSyncIndicators();
+    renderAuthIndicators();
   }
 
   function renderSidebarMode() {
@@ -779,7 +792,6 @@
   function renderSyncPanel() {
     refs.cloudEnabled.checked = Boolean(state.cloud.enabled);
     refs.cloudWebAppUrl.value = state.cloud.webAppUrl || "";
-    refs.cloudApiToken.value = state.cloud.apiToken || "";
     refs.cloudUserId.value = state.cloud.userId || "default";
 
     const canActions = canUseCloudSync();
@@ -794,6 +806,8 @@
         : "Last sync: never";
 
     updateSyncIndicators();
+    renderAuthIndicators();
+    renderGoogleSignInButton();
   }
 
   function toggleCompletion(habitId, dateKey) {
@@ -1012,7 +1026,6 @@
   function readCloudInputs() {
     return {
       webAppUrl: normalizeCloudUrl(refs.cloudWebAppUrl.value),
-      apiToken: String(refs.cloudApiToken.value || "").trim(),
       userId: normalizeCloudUserId(refs.cloudUserId.value),
     };
   }
@@ -1076,7 +1089,7 @@
   }
 
   function canUseCloudSync() {
-    return Boolean(state.cloud.enabled && state.cloud.webAppUrl && state.cloud.apiToken);
+    return Boolean(state.cloud.enabled && state.cloud.webAppUrl && state.auth && state.auth.idToken);
   }
 
   function scheduleCloudPush(options = {}) {
@@ -1101,7 +1114,7 @@
 
   async function testCloudConnection() {
     if (!canUseCloudSync()) {
-      updateSyncStatus("error", "Missing URL or token");
+      updateSyncStatus("error", "Missing URL or Google sign-in");
       renderAll();
       return false;
     }
@@ -1195,14 +1208,20 @@
       }
 
       const localCloud = { ...state.cloud };
+      const localAuth = { ...state.auth };
       state = normalizeState(serverState);
       state.cloud = {
         ...state.cloud,
         enabled: localCloud.enabled,
         webAppUrl: localCloud.webAppUrl,
-        apiToken: localCloud.apiToken,
         userId: localCloud.userId,
         lastSyncedAt: serverUpdatedAt || new Date().toISOString(),
+      };
+      state.auth = {
+        ...state.auth,
+        email: localAuth.email || "",
+        idToken: localAuth.idToken || "",
+        signedIn: Boolean(localAuth.idToken),
       };
 
       cloudRuntime.hasLocalChanges = false;
@@ -1262,7 +1281,7 @@
   async function requestCloudApi(action, payload = {}) {
     const requestBody = {
       action,
-      token: state.cloud.apiToken,
+      idToken: state.auth.idToken,
       userId: state.cloud.userId,
       ...payload,
     };
@@ -1301,6 +1320,11 @@
       enabled: state.cloud.enabled,
       userId: state.cloud.userId,
       lastSyncedAt: state.cloud.lastSyncedAt,
+    };
+    snapshot.auth = {
+      email: "",
+      idToken: "",
+      signedIn: false,
     };
     return snapshot;
   }
@@ -1375,9 +1399,16 @@
     };
     next.cloud.enabled = Boolean(next.cloud.enabled);
     next.cloud.webAppUrl = normalizeCloudUrl(next.cloud.webAppUrl);
-    next.cloud.apiToken = String(next.cloud.apiToken || "").trim();
     next.cloud.userId = normalizeCloudUserId(next.cloud.userId);
     next.cloud.lastSyncedAt = String(next.cloud.lastSyncedAt || "");
+
+    next.auth = {
+      ...template.auth,
+      ...(next.auth && typeof next.auth === "object" ? next.auth : {}),
+    };
+    next.auth.email = String(next.auth.email || "");
+    next.auth.idToken = String(next.auth.idToken || "");
+    next.auth.signedIn = Boolean(next.auth.idToken);
 
     return next;
   }
@@ -1400,9 +1431,13 @@
       cloud: {
         enabled: Boolean(CLOUD_BOOT_CONFIG.enabled),
         webAppUrl: normalizeCloudUrl(CLOUD_BOOT_CONFIG.webAppUrl),
-        apiToken: String(CLOUD_BOOT_CONFIG.apiToken || "").trim(),
         userId: normalizeCloudUserId(CLOUD_BOOT_CONFIG.userId),
         lastSyncedAt: "",
+      },
+      auth: {
+        email: "",
+        idToken: "",
+        signedIn: false,
       },
     };
   }
@@ -1423,8 +1458,26 @@
     return {
       enabled: Boolean(merged.enabled),
       webAppUrl: normalizeCloudUrl(merged.webAppUrl),
-      apiToken: String(merged.apiToken || "").trim(),
       userId: normalizeCloudUserId(merged.userId),
+    };
+  }
+
+  function readAuthConfig() {
+    const fromWindow =
+      typeof window !== "undefined" &&
+      window.DISCIPLINE_OS_AUTH_CONFIG &&
+      typeof window.DISCIPLINE_OS_AUTH_CONFIG === "object"
+        ? window.DISCIPLINE_OS_AUTH_CONFIG
+        : null;
+
+    const merged = {
+      ...FALLBACK_AUTH_CONFIG,
+      ...(fromWindow || {}),
+    };
+
+    return {
+      googleClientId: String(merged.googleClientId || "").trim(),
+      allowedEmail: String(merged.allowedEmail || "").trim().toLowerCase(),
     };
   }
 
@@ -1432,6 +1485,123 @@
     // Intentionally no local persistence: Google Sheets is the only durable store.
     if (!options.skipCloud) {
       scheduleCloudPush();
+    }
+  }
+
+  function initializeGoogleAuth() {
+    renderAuthIndicators();
+    if (!AUTH_CONFIG.googleClientId) {
+      return;
+    }
+
+    waitForGoogleIdentity(8000).then((ready) => {
+      if (!ready || !window.google || !window.google.accounts || !window.google.accounts.id) {
+        return;
+      }
+
+      window.google.accounts.id.initialize({
+        client_id: AUTH_CONFIG.googleClientId,
+        callback: handleGoogleCredential,
+        auto_select: true,
+      });
+      renderGoogleSignInButton();
+      window.google.accounts.id.prompt();
+    });
+  }
+
+  function waitForGoogleIdentity(timeoutMs) {
+    return new Promise((resolve) => {
+      const started = Date.now();
+      const timer = window.setInterval(() => {
+        if (window.google && window.google.accounts && window.google.accounts.id) {
+          window.clearInterval(timer);
+          resolve(true);
+          return;
+        }
+        if (Date.now() - started > timeoutMs) {
+          window.clearInterval(timer);
+          resolve(false);
+        }
+      }, 120);
+    });
+  }
+
+  function renderGoogleSignInButton() {
+    if (!refs.googleSignInButton) {
+      return;
+    }
+    if (!AUTH_CONFIG.googleClientId) {
+      refs.googleSignInButton.replaceChildren();
+      return;
+    }
+    if (!window.google || !window.google.accounts || !window.google.accounts.id) {
+      return;
+    }
+    refs.googleSignInButton.replaceChildren();
+    window.google.accounts.id.renderButton(refs.googleSignInButton, {
+      theme: "outline",
+      size: "large",
+      width: 280,
+      text: "signin_with",
+    });
+  }
+
+  function handleGoogleCredential(response) {
+    const idToken = String(response?.credential || "");
+    if (!idToken) {
+      return;
+    }
+
+    const payload = decodeJwtPayload(idToken);
+    const email = String(payload?.email || "").toLowerCase();
+    if (AUTH_CONFIG.allowedEmail && email !== AUTH_CONFIG.allowedEmail) {
+      signOutGoogle();
+      updateSyncStatus("error", "Wrong Google account");
+      showToast("Please sign in with your allowed Google account.");
+      renderAll();
+      return;
+    }
+
+    state.auth.idToken = idToken;
+    state.auth.email = email;
+    state.auth.signedIn = true;
+    renderAuthIndicators();
+
+    if (canUseCloudSync()) {
+      void bootstrapCloudSyncNow();
+    }
+  }
+
+  function signOutGoogle() {
+    state.auth.idToken = "";
+    state.auth.email = "";
+    state.auth.signedIn = false;
+    if (window.google && window.google.accounts && window.google.accounts.id) {
+      window.google.accounts.id.disableAutoSelect();
+    }
+    renderAuthIndicators();
+    updateSyncStatus("local", "Signed out");
+    renderAll();
+  }
+
+  function renderAuthIndicators() {
+    const signedIn = Boolean(state.auth && state.auth.signedIn);
+    const email = state.auth?.email || "";
+    const text = signedIn ? `Signed in${email ? `: ${email}` : ""}` : "Not signed in";
+
+    if (refs.authBadge) {
+      refs.authBadge.textContent = text;
+      refs.authBadge.className = `sync-badge ${signedIn ? "synced" : "local"}`;
+    }
+
+    if (refs.authStatusText) {
+      refs.authStatusText.textContent = AUTH_CONFIG.googleClientId
+        ? text
+        : "Missing Google Client ID in cloud-config.js";
+    }
+
+    if (refs.signOutBtn) {
+      refs.signOutBtn.disabled = !signedIn;
     }
   }
 
@@ -1638,6 +1808,21 @@
       return crypto.randomUUID();
     }
     return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function decodeJwtPayload(token) {
+    try {
+      const parts = String(token || "").split(".");
+      if (parts.length < 2) {
+        return null;
+      }
+      const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+      const json = atob(padded);
+      return JSON.parse(json);
+    } catch (error) {
+      return null;
+    }
   }
 
   function getErrorMessage(error) {

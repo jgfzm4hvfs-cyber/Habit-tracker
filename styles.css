@@ -727,6 +727,15 @@ textarea {
   justify-content: flex-end;
 }
 
+.auth-panel {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.56);
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
 .habit-editor-list {
   display: grid;
   gap: 0.45rem;

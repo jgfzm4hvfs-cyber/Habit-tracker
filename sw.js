@@ -1,5 +1,5 @@
-const CACHE_NAME = "discipline-os-cache-v11";
-const APP_ASSETS = ["./", "./index.html", "./styles.css", "./cloud-config.js?v=20260214", "./app.js?v=20260214d", "./manifest.webmanifest"];
+const CACHE_NAME = "discipline-os-cache-v12";
+const APP_ASSETS = ["./", "./index.html", "./styles.css", "./cloud-config.js?v=20260214", "./app.js?v=20260214e", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
