@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Optional local-only cloud config (do not commit secrets)
+cloud-config.local.js
+
+# Temporary files
+*.tmp

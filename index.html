@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#151515" />
+    <title>Discipline OS</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Work+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-shape bg-shape-a" aria-hidden="true"></div>
+    <div class="bg-shape bg-shape-b" aria-hidden="true"></div>
+
+    <div class="app-shell">
+      <aside class="sidebar card" aria-label="Sidebar">
+        <header class="sidebar-head">
+          <p class="eyebrow">Control System</p>
+          <h1>Discipline OS</h1>
+          <p class="muted">A structure for consistency, not motivation.</p>
+        </header>
+
+        <nav class="mode-switch" aria-label="Sidebar mode">
+          <button class="mode-btn active" data-sidebar-mode="daily">Daily Habits</button>
+          <button class="mode-btn" data-sidebar-mode="analytics">Analytics</button>
+        </nav>
+
+        <section id="dailyPanel" class="side-panel active" aria-label="Daily panel">
+          <div class="section-head">
+            <h2>Today</h2>
+            <p id="todayLabel" class="muted"></p>
+          </div>
+          <div id="todayChecklist" class="today-list"></div>
+          <div class="day-progress-wrap">
+            <div class="segment-track" id="todaySegmentTrack"></div>
+            <p id="todaySummaryLabel" class="summary-label">0%</p>
+          </div>
+        </section>
+
+        <section id="analyticsPanel" class="side-panel" aria-label="Analytics panel">
+          <div class="section-head">
+            <h2>Analytics</h2>
+            <p class="muted">Last 30 days</p>
+          </div>
+          <div id="analyticsHabitList" class="analytics-list"></div>
+        </section>
+
+        <footer class="sidebar-actions">
+          <button id="openSyncBtn" class="btn secondary">Cloud Sync</button>
+        </footer>
+      </aside>
+
+      <main class="main">
+        <header class="main-header card">
+          <div>
+            <p class="eyebrow">Habit Operations Center</p>
+            <h2 id="mainHeading">This Week</h2>
+            <p id="mainSubheading" class="muted"></p>
+          </div>
+          <div class="header-tools">
+            <span id="syncBadge" class="sync-badge local">Local only</span>
+            <button id="manageHabitsBtn" class="btn secondary">Manage Habits</button>
+            <button id="quickStrengthBtn" class="btn primary">Toggle Strength Training</button>
+          </div>
+        </header>
+
+        <section class="toolbar card" aria-label="View controls">
+          <div class="view-switch" role="tablist" aria-label="Main view switch">
+            <button class="view-btn active" data-view-mode="week">Week Table</button>
+            <button class="view-btn" data-view-mode="month">Full Month</button>
+          </div>
+          <div class="nav-tools">
+            <button id="prevPeriodBtn" class="btn ghost">Previous</button>
+            <button id="todayBtn" class="btn ghost">Today</button>
+            <button id="nextPeriodBtn" class="btn ghost">Next</button>
+            <p id="periodLabel" class="period-label"></p>
+          </div>
+        </section>
+
+        <section id="weekView" class="main-view active card" aria-label="Weekly table">
+          <div class="table-scroll">
+            <table class="week-table">
+              <thead id="weekTableHead"></thead>
+              <tbody id="weekTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="monthView" class="main-view card" aria-label="Monthly calendar">
+          <div id="monthGrid" class="month-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="bootOverlay" class="boot-overlay" aria-live="polite">
+      <div class="boot-overlay-card">
+        <span class="boot-spinner" aria-hidden="true"></span>
+        <p id="bootOverlayText">Loading your latest habits...</p>
+      </div>
+    </div>
+
+    <dialog id="syncModal" class="sync-modal">
+      <form id="syncForm" method="dialog">
+        <header class="section-head">
+          <h2>Google Sheets Sync</h2>
+          <p class="muted">Use one sheet for both iPhone and Mac</p>
+        </header>
+
+        <label for="cloudEnabled" class="inline-label">
+          <input id="cloudEnabled" type="checkbox" />
+          Enable cloud sync
+        </label>
+
+        <label for="cloudWebAppUrl">Apps Script Web App URL</label>
+        <input
+          id="cloudWebAppUrl"
+          type="url"
+          placeholder="https://script.google.com/macros/s/xxxx/exec"
+        />
+
+        <label for="cloudApiToken">API token</label>
+        <input id="cloudApiToken" type="password" placeholder="Same token as Apps Script" />
+
+        <label for="cloudUserId">User ID</label>
+        <input id="cloudUserId" type="text" value="default" placeholder="default" />
+
+        <div class="button-row">
+          <button id="saveSyncBtn" class="btn primary" type="button">Save</button>
+          <button id="testSyncBtn" class="btn secondary" type="button">Test</button>
+          <button id="pullSyncBtn" class="btn secondary" type="button">Pull</button>
+          <button id="pushSyncBtn" class="btn ghost" type="button">Push</button>
+        </div>
+
+        <p id="syncStatusText" class="sync-badge local">Local only</p>
+        <p id="syncLastText" class="muted">Last sync: never</p>
+
+        <div class="button-row modal-footer">
+          <button id="closeSyncBtn" class="btn ghost" type="button">Close</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="habitsModal" class="sync-modal habits-modal">
+      <form id="habitsForm" method="dialog">
+        <header class="section-head">
+          <h2>Manage Habits</h2>
+          <p class="muted">Add, rename, change emoji, or delete habits</p>
+        </header>
+
+        <div id="habitEditorList" class="habit-editor-list"></div>
+
+        <section class="habit-create">
+          <label for="newHabitName">New habit name</label>
+          <input id="newHabitName" type="text" placeholder="Example: Read 20 min" />
+
+          <label for="newHabitEmoji">Emoji</label>
+          <input id="newHabitEmoji" type="text" placeholder="📖" />
+
+          <button id="addHabitBtn" class="btn primary" type="button">Add Habit</button>
+        </section>
+
+        <div class="button-row modal-footer">
+          <button id="closeHabitsBtn" class="btn ghost" type="button">Close</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="./cloud-config.js?v=20260214"></script>
+    <script src="./app.js?v=20260214d" defer></script>
+  </body>
+</html>
