@@ -257,3 +257,10 @@ function getErrorMessage_(error) {
   }
   return String(error || 'Unknown error');
 }
+
+function authorizeUrlFetch_() {
+  const r = UrlFetchApp.fetch("https://oauth2.googleapis.com/tokeninfo?id_token=invalid", {
+    muteHttpExceptions: true,
+  });
+  Logger.log(r.getResponseCode());
+}
