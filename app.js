@@ -151,7 +151,7 @@
   };
 
   let state = normalizeState(loadPersistedState());
-  let weekCursor = startOfWeek(new Date(), WEEK_STARTS_ON);
+  let weekCursor = startOfDay(new Date());
   let monthCursor = startOfMonth(new Date());
   let toastTimer = null;
 
@@ -282,7 +282,7 @@
 
     refs.prevPeriodBtn.addEventListener("click", () => {
       if (state.viewMode === "week") {
-        weekCursor = addDays(weekCursor, -7);
+        weekCursor = addDays(weekCursor, -15);
       } else {
         monthCursor = addMonths(monthCursor, -1);
       }
@@ -291,7 +291,7 @@
 
     refs.nextPeriodBtn.addEventListener("click", () => {
       if (state.viewMode === "week") {
-        weekCursor = addDays(weekCursor, 7);
+        weekCursor = minDate(addDays(weekCursor, 15), startOfDay(new Date()));
       } else {
         monthCursor = addMonths(monthCursor, 1);
       }
@@ -299,7 +299,7 @@
     });
 
     refs.todayBtn.addEventListener("click", () => {
-      weekCursor = startOfWeek(new Date(), WEEK_STARTS_ON);
+      weekCursor = startOfDay(new Date());
       monthCursor = startOfMonth(new Date());
       renderMainContent();
     });
@@ -573,8 +573,8 @@
   function renderHeader() {
     refs.todayLabel.textContent = formatDateReadable(new Date());
     if (state.viewMode === "week") {
-      refs.mainHeading.textContent = "This Week";
-      refs.mainSubheading.textContent = "Fast view of daily completions across all habits.";
+      refs.mainHeading.textContent = "Last 15 Days";
+      refs.mainSubheading.textContent = "Today first, then your previous 14 days of history.";
     } else if (state.viewMode === "month") {
       refs.mainHeading.textContent = "This Month";
       refs.mainSubheading.textContent = "Calendar-driven daily execution and consistency.";
@@ -797,11 +797,12 @@
   }
 
   function renderWeekTable() {
-    const weekStart = weekCursor;
-    const weekEnd = addDays(weekStart, 6);
-    refs.periodLabel.textContent = `${formatShortDate(weekStart)} - ${formatShortDate(weekEnd)}`;
+    const topDate = startOfDay(weekCursor);
+    const oldestDate = addDays(topDate, -14);
+    refs.periodLabel.textContent = `${formatShortDate(topDate)} to ${formatShortDate(oldestDate)} (15 days)`;
 
     const habits = getActiveHabits();
+    const compactDate = isCompactViewport();
     const headRow = document.createElement("tr");
 
     headRow.appendChild(makeTh("Date"));
@@ -817,13 +818,15 @@
 
     const bodyFragment = document.createDocumentFragment();
 
-    for (let i = 0; i < 7; i += 1) {
-      const date = addDays(weekStart, i);
+    for (let i = 0; i < 15; i += 1) {
+      const date = addDays(topDate, -i);
       const dateKey = toDateKey(date);
       const row = document.createElement("tr");
 
       const dateCell = document.createElement("td");
-      dateCell.innerHTML = `<strong>${formatDateWithWeekday(date)}</strong>`;
+      dateCell.innerHTML = `<strong>${
+        compactDate ? formatDateCompact(date) : formatDateWithWeekday(date)
+      }</strong>`;
       row.appendChild(dateCell);
 
       habits.forEach((habit) => {
@@ -875,7 +878,6 @@
     }
 
     refs.weekTableBody.replaceChildren(bodyFragment);
-    renderWeekCards(weekStart, habits);
   }
 
   function renderWeekCards(weekStart, habits) {
@@ -1037,6 +1039,23 @@
       return;
     }
 
+    const wrapper = document.createElement("div");
+    wrapper.className = "heatmap-wrap";
+
+    const legend = document.createElement("div");
+    legend.className = "heatmap-legend";
+    legend.innerHTML = `
+      <span>Low</span>
+      <span class="heatmap-legend-cell rest" title="Not scheduled"></span>
+      <span class="heatmap-legend-cell missed" title="Scheduled but missed"></span>
+      <span class="heatmap-legend-cell done level-1" title="Completed"></span>
+      <span class="heatmap-legend-cell done level-2" title="Completed"></span>
+      <span class="heatmap-legend-cell done level-3" title="Completed"></span>
+      <span class="heatmap-legend-cell done level-4" title="Completed"></span>
+      <span>High</span>
+    `;
+    wrapper.appendChild(legend);
+
     const table = document.createElement("div");
     table.className = "heatmap-table";
     table.style.setProperty("--heatmap-days", String(daysInMonth));
@@ -1048,7 +1067,7 @@
     for (let day = 1; day <= daysInMonth; day += 1) {
       const dayLabel = document.createElement("span");
       dayLabel.className = "heatmap-day-label";
-      dayLabel.textContent = String(day);
+      dayLabel.textContent = day % 2 === 0 || day === 1 || day === daysInMonth ? String(day) : "";
       headRow.appendChild(dayLabel);
     }
     table.appendChild(headRow);
@@ -1069,18 +1088,14 @@
       for (let day = 1; day <= daysInMonth; day += 1) {
         const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
         const dateKey = toDateKey(date);
-        const scheduled = isScheduledDay(habit, date);
-        const done = isCompleted(habit.id, dateKey);
+        const heat = getHabitHeatCell(habit, date, monthStart);
 
         const cell = document.createElement("button");
         cell.type = "button";
         cell.className = "heatmap-cell";
-        if (done) {
-          cell.classList.add("done");
-        } else if (!scheduled) {
-          cell.classList.add("rest");
-        } else {
-          cell.classList.add("missed");
+        cell.classList.add(heat.kind);
+        if (heat.kind === "done") {
+          cell.classList.add(`level-${heat.level}`);
         }
         if (dateKey === todayKey()) {
           cell.classList.add("today");
@@ -1088,14 +1103,16 @@
         cell.dataset.action = "toggle-heatmap-habit";
         cell.dataset.habitId = habit.id;
         cell.dataset.dateKey = dateKey;
-        cell.title = `${habit.name} • ${formatDateReadable(date)}`;
+        cell.title = `${habit.name} • ${formatDateReadable(date)} • ${heat.label}`;
+        cell.setAttribute("aria-label", `${habit.name}, ${formatDateReadable(date)}, ${heat.label}`);
         row.appendChild(cell);
       }
 
       table.appendChild(row);
     });
 
-    refs.habitHeatmap.replaceChildren(table);
+    wrapper.appendChild(table);
+    refs.habitHeatmap.replaceChildren(wrapper);
   }
 
   function renderSyncPanel() {
@@ -1352,6 +1369,57 @@
     }
 
     return scheduled ? completed / scheduled : 0;
+  }
+
+  function getHabitHeatCell(habit, date, monthStart) {
+    const scheduled = isScheduledDay(habit, date);
+    if (!scheduled) {
+      return {
+        kind: "rest",
+        level: 0,
+        label: "Rest day",
+      };
+    }
+
+    const done = isCompleted(habit.id, toDateKey(date));
+    if (!done) {
+      return {
+        kind: "missed",
+        level: 0,
+        label: "Missed",
+      };
+    }
+
+    let streak = 0;
+    for (let i = 0; i < 31; i += 1) {
+      const current = addDays(date, -i);
+      if (current < monthStart) {
+        break;
+      }
+      if (!isScheduledDay(habit, current)) {
+        continue;
+      }
+      if (isCompleted(habit.id, toDateKey(current))) {
+        streak += 1;
+      } else {
+        break;
+      }
+    }
+
+    let level = 1;
+    if (streak >= 7) {
+      level = 4;
+    } else if (streak >= 4) {
+      level = 3;
+    } else if (streak >= 2) {
+      level = 2;
+    }
+
+    return {
+      kind: "done",
+      level,
+      label: `Done • ${streak}-day streak`,
+    };
   }
 
   function renderSegmentTrack(container, rate) {
@@ -2193,6 +2261,14 @@
     });
   }
 
+  function formatDateCompact(date) {
+    return date.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  }
+
   function formatShortDate(date) {
     return date.toLocaleDateString(undefined, {
       month: "short",
@@ -2221,6 +2297,10 @@
     return `${year}-${month}-${day}`;
   }
 
+  function startOfDay(date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
   function addDays(date, amount) {
     const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     copy.setDate(copy.getDate() + amount);
@@ -2229,6 +2309,10 @@
 
   function addMonths(date, amount) {
     return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+  }
+
+  function minDate(a, b) {
+    return a.getTime() <= b.getTime() ? a : b;
   }
 
   function startOfWeek(date, weekStartsOn) {
@@ -2240,6 +2324,10 @@
 
   function startOfMonth(date) {
     return new Date(date.getFullYear(), date.getMonth(), 1);
+  }
+
+  function isCompactViewport() {
+    return typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches;
   }
 
   function clampNumber(value, min, max) {

@@ -494,6 +494,9 @@ textarea {
   letter-spacing: 0.07em;
   color: var(--text-soft);
   background: rgba(255, 255, 255, 0.7);
+  position: sticky;
+  top: 0;
+  z-index: 3;
 }
 
 .week-table th:first-child,
@@ -504,6 +507,10 @@ textarea {
   text-align: left;
   min-width: 180px;
   background: rgba(255, 255, 255, 0.93);
+}
+
+.week-table thead th:first-child {
+  z-index: 6;
 }
 
 .habit-col-head {
@@ -739,6 +746,33 @@ textarea {
   min-width: max-content;
 }
 
+.heatmap-wrap {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.heatmap-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 0.22rem 0.45rem;
+  width: fit-content;
+  font-size: 0.67rem;
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.heatmap-legend-cell {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  display: inline-block;
+}
+
 .heatmap-table {
   display: grid;
   gap: 0.42rem;
@@ -807,23 +841,68 @@ textarea {
   cursor: pointer;
 }
 
-.heatmap-cell.done {
-  background: linear-gradient(180deg, #2f8b5d, #1f6744);
-  border-color: rgba(28, 96, 64, 0.62);
-}
-
 .heatmap-cell.missed {
-  background: rgba(177, 69, 79, 0.18);
+  background: rgba(185, 69, 81, 0.3);
+  border-color: rgba(177, 69, 79, 0.42);
 }
 
 .heatmap-cell.rest {
   background: rgba(110, 116, 130, 0.12);
-  opacity: 0.7;
+  opacity: 0.75;
+}
+
+.heatmap-cell.done.level-1 {
+  background: #cde9d7;
+  border-color: #9ec9af;
+}
+
+.heatmap-cell.done.level-2 {
+  background: #8fd0a9;
+  border-color: #5daf82;
+}
+
+.heatmap-cell.done.level-3 {
+  background: #49a86f;
+  border-color: #368454;
+}
+
+.heatmap-cell.done.level-4 {
+  background: #26784a;
+  border-color: #1f623c;
 }
 
 .heatmap-cell.today {
   outline: 1px solid #11121a;
   outline-offset: 1px;
+}
+
+.heatmap-legend-cell.missed {
+  background: rgba(185, 69, 81, 0.3);
+  border-color: rgba(177, 69, 79, 0.42);
+}
+
+.heatmap-legend-cell.rest {
+  background: rgba(110, 116, 130, 0.12);
+}
+
+.heatmap-legend-cell.done.level-1 {
+  background: #cde9d7;
+  border-color: #9ec9af;
+}
+
+.heatmap-legend-cell.done.level-2 {
+  background: #8fd0a9;
+  border-color: #5daf82;
+}
+
+.heatmap-legend-cell.done.level-3 {
+  background: #49a86f;
+  border-color: #368454;
+}
+
+.heatmap-legend-cell.done.level-4 {
+  background: #26784a;
+  border-color: #1f623c;
 }
 
 .btn {
@@ -1004,7 +1083,12 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .main {
+    order: 1;
+  }
+
   .sidebar {
+    order: 2;
     position: static;
     max-height: none;
   }
@@ -1044,12 +1128,51 @@ textarea {
   }
 
   .table-scroll {
-    display: none;
+    display: block;
+    overflow: auto;
+    max-height: min(62vh, 520px);
   }
 
   .week-cards {
-    display: grid;
-    gap: 0.55rem;
+    display: none;
+  }
+
+  .week-table {
+    min-width: 720px;
+  }
+
+  .week-table th,
+  .week-table td {
+    padding: 0.32rem 0.22rem;
+    font-size: 0.72rem;
+  }
+
+  .week-table th:first-child,
+  .week-table td:first-child {
+    min-width: 120px;
+  }
+
+  .habit-col-head,
+  .habit-cell {
+    width: 34px;
+    min-width: 34px;
+  }
+
+  .habit-toggle {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    font-size: 0.67rem;
+  }
+
+  .row-progress .segment-track {
+    width: 86px;
+  }
+
+  .day-note-input {
+    min-width: 108px;
+    padding: 0.26rem 0.32rem;
+    font-size: 0.74rem;
   }
 
   .month-grid {
@@ -1072,6 +1195,15 @@ textarea {
   }
 
   .heatmap-row {
-    grid-template-columns: minmax(160px, 1fr) repeat(var(--heatmap-days, 31), 18px);
+    grid-template-columns: minmax(148px, 1fr) repeat(var(--heatmap-days, 31), 16px);
+  }
+
+  .heatmap-cell {
+    width: 16px;
+    height: 16px;
+  }
+
+  .heatmap-habit-label {
+    font-size: 0.74rem;
   }
 }
