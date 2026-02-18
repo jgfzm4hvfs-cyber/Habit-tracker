@@ -236,6 +236,24 @@ textarea {
   gap: 0.5rem;
 }
 
+.today-group {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.today-group-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.today-group-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
 .today-item {
   border: 1px solid var(--line);
   border-left: 4px solid var(--habit-color, var(--line));
@@ -263,7 +281,8 @@ textarea {
   font-weight: 600;
 }
 
-.today-item .mark-btn {
+.today-item .mark-btn,
+.week-card-item .mark-btn {
   border: 1px solid var(--line);
   border-radius: 8px;
   width: 24px;
@@ -275,7 +294,8 @@ textarea {
   color: transparent;
 }
 
-.today-item .mark-btn.done {
+.today-item .mark-btn.done,
+.week-card-item .mark-btn.done {
   background: var(--primary);
   color: white;
   border-color: transparent;
@@ -449,13 +469,15 @@ textarea {
 
 .table-scroll {
   overflow-x: auto;
+  padding-bottom: 0.25rem;
 }
 
 .week-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  min-width: 1080px;
+  min-width: 980px;
 }
 
 .week-table th,
@@ -485,18 +507,28 @@ textarea {
 }
 
 .habit-col-head {
-  width: 42px;
+  width: 52px;
+  min-width: 52px;
+}
+
+.habit-cell {
+  width: 52px;
+  min-width: 52px;
 }
 
 .habit-toggle {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.66);
   color: transparent;
   cursor: pointer;
   font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   transition: var(--transition-fast);
 }
 
@@ -538,6 +570,63 @@ textarea {
   border-radius: 8px;
   padding: 0.35rem 0.45rem;
   background: rgba(255, 255, 255, 0.72);
+}
+
+.week-cards {
+  display: none;
+}
+
+.week-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 0.58rem;
+  display: grid;
+  gap: 0.48rem;
+}
+
+.week-card.today {
+  outline: 2px solid #11121a;
+}
+
+.week-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.week-card-head strong {
+  font-size: 0.9rem;
+}
+
+.week-card-head span {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.week-card-list {
+  display: grid;
+  gap: 0.38rem;
+}
+
+.week-card-item {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--habit-color, var(--line));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.65);
+  padding: 0.3rem 0.35rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.84rem;
+}
+
+.week-card-item.offday {
+  opacity: 0.58;
 }
 
 .month-grid {
@@ -641,6 +730,102 @@ textarea {
   color: var(--text-soft);
 }
 
+.heatmap-scroll {
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+}
+
+.habit-heatmap {
+  min-width: max-content;
+}
+
+.heatmap-table {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.heatmap-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) repeat(var(--heatmap-days, 31), 18px);
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.heatmap-head-row {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 8px;
+  padding: 0.22rem;
+  backdrop-filter: blur(4px);
+}
+
+.heatmap-habit-head {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.heatmap-day-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.64rem;
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.heatmap-habit-label {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.3rem 0.38rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.heatmap-habit-label strong {
+  font-size: 0.72rem;
+  color: var(--text-soft);
+}
+
+.heatmap-cell {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0;
+  cursor: pointer;
+}
+
+.heatmap-cell.done {
+  background: linear-gradient(180deg, #2f8b5d, #1f6744);
+  border-color: rgba(28, 96, 64, 0.62);
+}
+
+.heatmap-cell.missed {
+  background: rgba(177, 69, 79, 0.18);
+}
+
+.heatmap-cell.rest {
+  background: rgba(110, 116, 130, 0.12);
+  opacity: 0.7;
+}
+
+.heatmap-cell.today {
+  outline: 1px solid #11121a;
+  outline-offset: 1px;
+}
+
 .btn {
   border: 1px solid transparent;
   border-radius: 9px;
@@ -673,7 +858,6 @@ textarea {
 .btn:hover,
 .mode-btn:hover,
 .view-btn:hover,
-.habit-toggle:hover,
 .month-habit-btn:hover {
   transform: translateY(-1px);
 }
@@ -704,6 +888,7 @@ label {
 }
 
 input,
+select,
 textarea {
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -738,10 +923,23 @@ textarea {
 
 .habit-editor-list {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.75rem;
   max-height: min(52vh, 460px);
   overflow: auto;
   padding-right: 0.15rem;
+}
+
+.habit-editor-group {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.habit-editor-group-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-soft);
+  font-weight: 700;
 }
 
 .habit-editor-item {
@@ -750,7 +948,7 @@ textarea {
   background: rgba(255, 255, 255, 0.78);
   padding: 0.45rem;
   display: grid;
-  grid-template-columns: 68px minmax(0, 1fr) auto auto;
+  grid-template-columns: 66px minmax(0, 1fr) 124px 92px auto auto;
   gap: 0.4rem;
   align-items: center;
 }
@@ -761,6 +959,10 @@ textarea {
 
 .habit-editor-name {
   min-width: 0;
+}
+
+.habit-editor-target {
+  text-align: center;
 }
 
 .habit-editor-item .btn {
@@ -816,6 +1018,10 @@ textarea {
   .month-header {
     display: none;
   }
+
+  .heatmap-row {
+    grid-template-columns: minmax(180px, 1fr) repeat(var(--heatmap-days, 31), 18px);
+  }
 }
 
 @media (max-width: 760px) {
@@ -837,6 +1043,15 @@ textarea {
     justify-content: flex-start;
   }
 
+  .table-scroll {
+    display: none;
+  }
+
+  .week-cards {
+    display: grid;
+    gap: 0.55rem;
+  }
+
   .month-grid {
     grid-template-columns: 1fr;
   }
@@ -846,10 +1061,17 @@ textarea {
   }
 
   .habit-editor-item {
-    grid-template-columns: 58px minmax(0, 1fr);
+    grid-template-columns: 56px minmax(0, 1fr);
   }
 
+  .habit-editor-type,
+  .habit-editor-target,
   .habit-editor-item .btn {
     width: 100%;
+    grid-column: 1 / -1;
+  }
+
+  .heatmap-row {
+    grid-template-columns: minmax(160px, 1fr) repeat(var(--heatmap-days, 31), 18px);
   }
 }
