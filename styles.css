@@ -513,6 +513,25 @@ textarea {
   z-index: 6;
 }
 
+.date-cell-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.date-detail-btn {
+  display: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  padding: 0.18rem 0.5rem;
+  font-size: 0.67rem;
+  font-weight: 700;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
 .habit-col-head {
   width: 52px;
   min-width: 52px;
@@ -905,6 +924,58 @@ textarea {
   border-color: #1f623c;
 }
 
+.day-details-modal {
+  width: min(96vw, 460px);
+}
+
+#dayDetailsForm {
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.day-details-progress {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.day-details-habits {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.day-details-habits h3 {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--text-soft);
+}
+
+.day-details-habits-list {
+  display: grid;
+  gap: 0.35rem;
+  max-height: min(36vh, 260px);
+  overflow: auto;
+  padding-right: 0.1rem;
+}
+
+.day-detail-habit-row {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--habit-color, var(--line));
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.3rem 0.36rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  font-weight: 600;
+  font-size: 0.83rem;
+}
+
+.day-detail-habit-row.offday {
+  opacity: 0.62;
+}
+
 .btn {
   border: 1px solid transparent;
   border-radius: 9px;
@@ -1083,12 +1154,7 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .main {
-    order: 1;
-  }
-
   .sidebar {
-    order: 2;
     position: static;
     max-height: none;
   }
@@ -1110,27 +1176,75 @@ textarea {
 
 @media (max-width: 760px) {
   body {
-    padding: 0.7rem;
+    padding: 0.56rem;
   }
 
   .card {
-    border-radius: 16px;
+    border-radius: 14px;
+  }
+
+  .app-shell {
+    gap: 0.55rem;
+  }
+
+  .sidebar {
+    padding: 0.72rem;
+    gap: 0.55rem;
+  }
+
+  .sidebar-head h1 {
+    font-size: 1.55rem;
+  }
+
+  .sidebar-head .muted {
+    display: none;
+  }
+
+  .side-panel.active {
+    max-height: min(34vh, 300px);
+    overflow: auto;
   }
 
   .main-header,
   .toolbar {
     flex-direction: column;
     align-items: flex-start;
+    padding: 0.68rem 0.72rem;
+    gap: 0.52rem;
+  }
+
+  .main-header {
+    align-items: flex-start;
+  }
+
+  .toolbar {
+    position: sticky;
+    top: 0.35rem;
+    z-index: 10;
+    backdrop-filter: blur(10px);
+  }
+
+  .view-switch {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 0.16rem;
+  }
+
+  .view-btn {
+    white-space: nowrap;
+    padding: 0.42rem 0.7rem;
+    font-size: 0.77rem;
   }
 
   .header-tools {
     justify-content: flex-start;
+    gap: 0.35rem;
   }
 
   .table-scroll {
     display: block;
     overflow: auto;
-    max-height: min(62vh, 520px);
+    max-height: min(57vh, 490px);
   }
 
   .week-cards {
@@ -1138,31 +1252,35 @@ textarea {
   }
 
   .week-table {
-    min-width: 720px;
+    min-width: 100%;
   }
 
   .week-table th,
   .week-table td {
-    padding: 0.32rem 0.22rem;
-    font-size: 0.72rem;
+    padding: 0.28rem 0.18rem;
+    font-size: 0.69rem;
   }
 
   .week-table th:first-child,
   .week-table td:first-child {
-    min-width: 120px;
+    min-width: 94px;
+  }
+
+  .date-detail-btn {
+    display: inline-flex;
   }
 
   .habit-col-head,
   .habit-cell {
-    width: 34px;
-    min-width: 34px;
+    width: 26px;
+    min-width: 26px;
   }
 
   .habit-toggle {
-    width: 20px;
-    height: 20px;
-    border-radius: 6px;
-    font-size: 0.67rem;
+    width: 17px;
+    height: 17px;
+    border-radius: 5px;
+    font-size: 0.58rem;
   }
 
   .row-progress .segment-track {
@@ -1170,9 +1288,9 @@ textarea {
   }
 
   .day-note-input {
-    min-width: 108px;
+    min-width: 90px;
     padding: 0.26rem 0.32rem;
-    font-size: 0.74rem;
+    font-size: 0.68rem;
   }
 
   .month-grid {
@@ -1204,6 +1322,12 @@ textarea {
   }
 
   .heatmap-habit-label {
-    font-size: 0.74rem;
+    font-size: 0.72rem;
+  }
+
+  .heatmap-legend {
+    font-size: 0.62rem;
+    gap: 0.24rem;
+    padding: 0.18rem 0.34rem;
   }
 }

@@ -153,6 +153,7 @@
   let state = normalizeState(loadPersistedState());
   let weekCursor = startOfDay(new Date());
   let monthCursor = startOfMonth(new Date());
+  let activeDayDetailsKey = "";
   let toastTimer = null;
 
   const refs = {
@@ -200,6 +201,16 @@
     newHabitType: byId("newHabitType"),
     newHabitTarget: byId("newHabitTarget"),
     addHabitBtn: byId("addHabitBtn"),
+
+    dayDetailsModal: byId("dayDetailsModal"),
+    closeDayDetailsBtn: byId("closeDayDetailsBtn"),
+    saveDayDetailsBtn: byId("saveDayDetailsBtn"),
+    dayDetailsTitle: byId("dayDetailsTitle"),
+    dayDetailsSummary: byId("dayDetailsSummary"),
+    dayDetailsTrack: byId("dayDetailsTrack"),
+    dayDetailsRate: byId("dayDetailsRate"),
+    dayDetailsNoteInput: byId("dayDetailsNoteInput"),
+    dayDetailsHabitsList: byId("dayDetailsHabitsList"),
 
     cloudEnabled: byId("cloudEnabled"),
     cloudWebAppUrl: byId("cloudWebAppUrl"),
@@ -407,17 +418,23 @@
       }
 
       const action = button.dataset.action;
-      if (action !== "toggle") {
-        return;
-      }
-
-      const habitId = button.dataset.habitId;
       const dateKey = button.dataset.dateKey;
-      if (!habitId || !dateKey) {
+      if (!dateKey) {
         return;
       }
 
-      toggleCompletion(habitId, dateKey);
+      if (action === "toggle") {
+        const habitId = button.dataset.habitId;
+        if (!habitId) {
+          return;
+        }
+        toggleCompletion(habitId, dateKey);
+        return;
+      }
+
+      if (action === "open-day-details") {
+        openDayDetails(dateKey);
+      }
     });
 
     refs.weekTableBody.addEventListener("change", (event) => {
@@ -462,6 +479,38 @@
 
       state.dayNotes[dateKey] = String(input.value || "").trim();
       persistState();
+    });
+
+    refs.dayDetailsHabitsList.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-action='toggle-day-detail-habit']");
+      if (!button) {
+        return;
+      }
+
+      const habitId = button.dataset.habitId;
+      const dateKey = button.dataset.dateKey;
+      if (!habitId || !dateKey) {
+        return;
+      }
+
+      toggleCompletion(habitId, dateKey);
+      renderDayDetails(dateKey);
+    });
+
+    refs.saveDayDetailsBtn.addEventListener("click", () => {
+      if (!activeDayDetailsKey) {
+        return;
+      }
+
+      state.dayNotes[activeDayDetailsKey] = String(refs.dayDetailsNoteInput.value || "").trim();
+      persistState();
+      renderAll();
+      refs.dayDetailsModal.close();
+      showToast("Day details saved.");
+    });
+
+    refs.closeDayDetailsBtn.addEventListener("click", () => {
+      refs.dayDetailsModal.close();
     });
 
     refs.monthGrid.addEventListener("click", (event) => {
@@ -812,8 +861,10 @@
       th.title = habit.name;
       headRow.appendChild(th);
     });
-    headRow.appendChild(makeTh("Progress"));
-    headRow.appendChild(makeTh("Notes"));
+    if (!compactDate) {
+      headRow.appendChild(makeTh("Progress"));
+      headRow.appendChild(makeTh("Notes"));
+    }
     refs.weekTableHead.replaceChildren(headRow);
 
     const bodyFragment = document.createDocumentFragment();
@@ -824,9 +875,20 @@
       const row = document.createElement("tr");
 
       const dateCell = document.createElement("td");
-      dateCell.innerHTML = `<strong>${
-        compactDate ? formatDateCompact(date) : formatDateWithWeekday(date)
-      }</strong>`;
+      dateCell.className = "date-cell";
+      dateCell.innerHTML = `
+        <div class="date-cell-wrap">
+          <strong>${compactDate ? formatDateCompact(date) : formatDateWithWeekday(date)}</strong>
+          <button
+            type="button"
+            class="date-detail-btn"
+            data-action="open-day-details"
+            data-date-key="${dateKey}"
+            aria-label="Open details for ${formatDateReadable(date)}"
+            title="Open day details"
+          >Details</button>
+        </div>
+      `;
       row.appendChild(dateCell);
 
       habits.forEach((habit) => {
@@ -850,34 +912,83 @@
         row.appendChild(td);
       });
 
-      const totals = getDayTotals(date);
-      const progressCell = document.createElement("td");
-      progressCell.className = "row-progress";
+      if (!compactDate) {
+        const totals = getDayTotals(date);
+        const progressCell = document.createElement("td");
+        progressCell.className = "row-progress";
 
-      const track = document.createElement("div");
-      track.className = "segment-track";
-      renderSegmentTrack(track, totals.rate);
-      const label = document.createElement("span");
-      label.className = "row-progress-value";
-      label.textContent = `${Math.round(totals.rate * 100)}%`;
-      progressCell.append(track, label);
-      row.appendChild(progressCell);
+        const track = document.createElement("div");
+        track.className = "segment-track";
+        renderSegmentTrack(track, totals.rate);
+        const label = document.createElement("span");
+        label.className = "row-progress-value";
+        label.textContent = `${Math.round(totals.rate * 100)}%`;
+        progressCell.append(track, label);
+        row.appendChild(progressCell);
 
-      const noteCell = document.createElement("td");
-      const input = document.createElement("input");
-      input.className = "day-note-input";
-      input.type = "text";
-      input.placeholder = "Notes";
-      input.value = state.dayNotes[dateKey] || "";
-      input.dataset.action = "note";
-      input.dataset.dateKey = dateKey;
-      noteCell.appendChild(input);
-      row.appendChild(noteCell);
+        const noteCell = document.createElement("td");
+        const input = document.createElement("input");
+        input.className = "day-note-input";
+        input.type = "text";
+        input.placeholder = "Notes";
+        input.value = state.dayNotes[dateKey] || "";
+        input.dataset.action = "note";
+        input.dataset.dateKey = dateKey;
+        noteCell.appendChild(input);
+        row.appendChild(noteCell);
+      }
 
       bodyFragment.appendChild(row);
     }
 
     refs.weekTableBody.replaceChildren(bodyFragment);
+  }
+
+  function openDayDetails(dateKey) {
+    activeDayDetailsKey = String(dateKey || "");
+    if (!activeDayDetailsKey) {
+      return;
+    }
+    renderDayDetails(activeDayDetailsKey);
+    refs.dayDetailsModal.showModal();
+  }
+
+  function renderDayDetails(dateKey) {
+    const date = fromDateKey(dateKey);
+    if (!date) {
+      return;
+    }
+
+    const totals = getDayTotals(date);
+    refs.dayDetailsTitle.textContent = formatDateWithWeekday(date);
+    refs.dayDetailsSummary.textContent = `${totals.completed}/${totals.scheduled} habits completed`;
+    renderSegmentTrack(refs.dayDetailsTrack, totals.rate);
+    refs.dayDetailsRate.textContent = `${Math.round(totals.rate * 100)}%`;
+    refs.dayDetailsNoteInput.value = state.dayNotes[dateKey] || "";
+
+    const habits = getActiveHabits();
+    const fragment = document.createDocumentFragment();
+    habits.forEach((habit) => {
+      const scheduled = isScheduledDay(habit, date);
+      const done = isCompleted(habit.id, dateKey);
+      const row = document.createElement("div");
+      row.className = `day-detail-habit-row${scheduled ? "" : " offday"}`;
+      row.style.setProperty("--habit-color", habit.color);
+      row.innerHTML = `
+        <span>${habit.icon} ${escapeHtml(habit.name)}</span>
+        <button
+          type="button"
+          class="mark-btn ${done ? "done" : ""}"
+          data-action="toggle-day-detail-habit"
+          data-habit-id="${habit.id}"
+          data-date-key="${dateKey}"
+          title="${done ? "Undo" : "Mark done"}"
+        >✓</button>
+      `;
+      fragment.appendChild(row);
+    });
+
+    refs.dayDetailsHabitsList.replaceChildren(fragment);
   }
 
   function renderWeekCards(weekStart, habits) {
@@ -2295,6 +2406,19 @@
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
+  }
+
+  function fromDateKey(value) {
+    const text = String(value || "");
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+    if (!match) {
+      return null;
+    }
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    if (!Number.isFinite(date.getTime())) {
+      return null;
+    }
+    return date;
   }
 
   function startOfDay(date) {
