@@ -1,2518 +1,1578 @@
-(() => {
-  "use strict";
-
-  const WEEK_STARTS_ON = 1;
-  const CLOUD_SYNC_DEBOUNCE_MS = 450;
-  const CLOUD_PULL_INTERVAL_MS = 45000;
-  const CLOUD_PUSH_RETRY_MS = 1400;
-  const CLOUD_PUSH_ERROR_RETRY_MS = 15000;
-  const BOOT_SYNC_MAX_WAIT_MS = 8000;
-  const BOOT_SYNC_MIN_VISIBLE_MS = 450;
-  const LOCAL_STATE_KEY = "discipline_os_state_v2";
-  const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const HABIT_TYPE_CORNERSTONE = "cornerstone";
-  const HABIT_TYPE_REGULAR = "regular";
-  const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
-  const HABIT_COLOR_PALETTE = [
-    "#2563d2",
-    "#2f8b5d",
-    "#d7842c",
-    "#2f94bc",
-    "#b1454f",
-    "#6a5cb6",
-    "#704b8d",
-    "#8b6a35",
-    "#4c7f95",
-    "#4e8a54",
-  ];
-  const FALLBACK_CLOUD_BOOT_CONFIG = {
-    enabled: false,
-    webAppUrl: "",
-    userId: "default",
-  };
-  const FALLBACK_AUTH_CONFIG = {
-    googleClientId: "",
-    allowedEmail: "",
-  };
-  const CLOUD_BOOT_CONFIG = readCloudBootConfig();
-  const AUTH_CONFIG = readAuthConfig();
-
-  const DEFAULT_HABITS = [
-    {
-      id: "habit_strength_training",
-      name: "Strength Training",
-      icon: "🏋️",
-      color: "#2563d2",
-      targetPerWeek: 3,
-      scheduledDays: [1, 3, 5],
-      type: HABIT_TYPE_CORNERSTONE,
-      archived: false,
-    },
-    {
-      id: "habit_sleep",
-      name: "7-8 hrs Sleep",
-      icon: "😴",
-      color: "#5a6fc9",
-      targetPerWeek: 7,
-      scheduledDays: ALL_DAYS,
-      type: HABIT_TYPE_CORNERSTONE,
-      archived: false,
-    },
-    {
-      id: "habit_meals",
-      name: "Eat Healthy Meals",
-      icon: "🥗",
-      color: "#2f8b5d",
-      targetPerWeek: 7,
-      scheduledDays: ALL_DAYS,
-      type: HABIT_TYPE_CORNERSTONE,
-      archived: false,
-    },
-    {
-      id: "habit_study",
-      name: "Study",
-      icon: "📚",
-      color: "#d7842c",
-      targetPerWeek: 6,
-      scheduledDays: [0, 1, 2, 3, 4, 5],
-      type: HABIT_TYPE_REGULAR,
-      archived: false,
-    },
-    {
-      id: "habit_hydration",
-      name: "Drink 2L",
-      icon: "💧",
-      color: "#2f94bc",
-      targetPerWeek: 7,
-      scheduledDays: ALL_DAYS,
-      type: HABIT_TYPE_REGULAR,
-      archived: false,
-    },
-    {
-      id: "habit_no_alcohol",
-      name: "No Alcohol",
-      icon: "🚫",
-      color: "#b1454f",
-      targetPerWeek: 7,
-      scheduledDays: ALL_DAYS,
-      type: HABIT_TYPE_REGULAR,
-      archived: false,
-    },
-    {
-      id: "habit_social",
-      name: "Social Media < 90m",
-      icon: "📵",
-      color: "#6a5cb6",
-      targetPerWeek: 7,
-      scheduledDays: ALL_DAYS,
-      type: HABIT_TYPE_REGULAR,
-      archived: false,
-    },
-    {
-      id: "habit_no_porn",
-      name: "No Porn",
-      icon: "🧠",
-      color: "#704b8d",
-      targetPerWeek: 7,
-      scheduledDays: ALL_DAYS,
-      type: HABIT_TYPE_REGULAR,
-      archived: false,
-    },
-    {
-      id: "habit_plan",
-      name: "Plan Tomorrow",
-      icon: "📝",
-      color: "#69707d",
-      targetPerWeek: 7,
-      scheduledDays: ALL_DAYS,
-      type: HABIT_TYPE_REGULAR,
-      archived: false,
-    },
-    {
-      id: "habit_mobility",
-      name: "Mobility 15m",
-      icon: "🤸",
-      color: "#8b6a35",
-      targetPerWeek: 5,
-      scheduledDays: [1, 2, 3, 4, 5],
-      type: HABIT_TYPE_REGULAR,
-      archived: false,
-    },
-  ];
-
-  const cloudRuntime = {
-    inFlight: false,
-    pushTimer: null,
-    pullTimer: null,
-    hasLocalChanges: false,
-    lastPullReason: "none",
-    status: "local",
-    message: "Local only",
-  };
-
-  let state = normalizeState(loadPersistedState());
-  let weekCursor = startOfDay(new Date());
-  let monthCursor = startOfMonth(new Date());
-  let activeDayDetailsKey = "";
-  let toastTimer = null;
-
-  const refs = {
-    todayLabel: byId("todayLabel"),
-    mainHeading: byId("mainHeading"),
-    mainSubheading: byId("mainSubheading"),
-    periodLabel: byId("periodLabel"),
-    syncBadge: byId("syncBadge"),
-    authBadge: byId("authBadge"),
-
-    modeButtons: Array.from(document.querySelectorAll(".mode-btn")),
-    viewButtons: Array.from(document.querySelectorAll(".view-btn")),
-
-    dailyPanel: byId("dailyPanel"),
-    analyticsPanel: byId("analyticsPanel"),
-    todayChecklist: byId("todayChecklist"),
-    todaySegmentTrack: byId("todaySegmentTrack"),
-    todaySummaryLabel: byId("todaySummaryLabel"),
-    analyticsHabitList: byId("analyticsHabitList"),
-
-    manageHabitsBtn: byId("manageHabitsBtn"),
-    quickStrengthBtn: byId("quickStrengthBtn"),
-
-    prevPeriodBtn: byId("prevPeriodBtn"),
-    nextPeriodBtn: byId("nextPeriodBtn"),
-    todayBtn: byId("todayBtn"),
-
-    weekView: byId("weekView"),
-    weekCards: byId("weekCards"),
-    monthView: byId("monthView"),
-    heatmapView: byId("heatmapView"),
-    weekTableHead: byId("weekTableHead"),
-    weekTableBody: byId("weekTableBody"),
-    monthGrid: byId("monthGrid"),
-    habitHeatmap: byId("habitHeatmap"),
-
-    openSyncBtn: byId("openSyncBtn"),
-    syncModal: byId("syncModal"),
-    closeSyncBtn: byId("closeSyncBtn"),
-    habitsModal: byId("habitsModal"),
-    closeHabitsBtn: byId("closeHabitsBtn"),
-    habitEditorList: byId("habitEditorList"),
-    newHabitName: byId("newHabitName"),
-    newHabitEmoji: byId("newHabitEmoji"),
-    newHabitType: byId("newHabitType"),
-    newHabitTarget: byId("newHabitTarget"),
-    addHabitBtn: byId("addHabitBtn"),
-
-    dayDetailsModal: byId("dayDetailsModal"),
-    closeDayDetailsBtn: byId("closeDayDetailsBtn"),
-    saveDayDetailsBtn: byId("saveDayDetailsBtn"),
-    dayDetailsTitle: byId("dayDetailsTitle"),
-    dayDetailsSummary: byId("dayDetailsSummary"),
-    dayDetailsTrack: byId("dayDetailsTrack"),
-    dayDetailsRate: byId("dayDetailsRate"),
-    dayDetailsNoteInput: byId("dayDetailsNoteInput"),
-    dayDetailsHabitsList: byId("dayDetailsHabitsList"),
-
-    cloudEnabled: byId("cloudEnabled"),
-    cloudWebAppUrl: byId("cloudWebAppUrl"),
-    cloudUserId: byId("cloudUserId"),
-    saveSyncBtn: byId("saveSyncBtn"),
-    testSyncBtn: byId("testSyncBtn"),
-    pullSyncBtn: byId("pullSyncBtn"),
-    pushSyncBtn: byId("pushSyncBtn"),
-    syncStatusText: byId("syncStatusText"),
-    syncLastText: byId("syncLastText"),
-    authStatusText: byId("authStatusText"),
-    googleSignInButton: byId("googleSignInButton"),
-    signOutBtn: byId("signOutBtn"),
-
-    bootOverlay: byId("bootOverlay"),
-    bootOverlayText: byId("bootOverlayText"),
-    toast: byId("toast"),
-  };
-
-  initialize();
-
-  function initialize() {
-    bindEvents();
-    initializeGoogleAuth();
-
-    const shouldBootFromCloud = canUseCloudSync();
-    if (shouldBootFromCloud) {
-      setBootOverlay(true, "Loading your latest habits...");
-      persistState({ skipCloud: true, silent: true });
-      const bootStartedAt = Date.now();
-
-      let finished = false;
-      const finishBoot = () => {
-        if (finished) {
-          return;
-        }
-        finished = true;
-        const elapsed = Date.now() - bootStartedAt;
-        const waitMs = Math.max(0, BOOT_SYNC_MIN_VISIBLE_MS - elapsed);
-        window.setTimeout(() => {
-          setBootOverlay(false);
-          renderAll();
-        }, waitMs);
-      };
-
-      const timeoutId = window.setTimeout(() => {
-        finishBoot();
-      }, BOOT_SYNC_MAX_WAIT_MS);
-
-      initializeCloudSync().finally(() => {
-        window.clearTimeout(timeoutId);
-        finishBoot();
-      });
-      return;
-    }
-
-    setBootOverlay(false);
-    renderAll();
-    persistState({ skipCloud: true, silent: true });
-    initializeCloudSync();
-  }
-
-  function bindEvents() {
-    refs.modeButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        state.sidebarMode = button.dataset.sidebarMode;
-        persistState({ skipCloud: true });
-        renderSidebarMode();
-      });
-    });
-
-    refs.viewButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        state.viewMode = button.dataset.viewMode;
-        persistState({ skipCloud: true });
-        renderMainContent();
-        renderHeader();
-      });
-    });
-
-    refs.prevPeriodBtn.addEventListener("click", () => {
-      if (state.viewMode === "week") {
-        weekCursor = addDays(weekCursor, -15);
-      } else {
-        monthCursor = addMonths(monthCursor, -1);
-      }
-      renderMainContent();
-    });
-
-    refs.nextPeriodBtn.addEventListener("click", () => {
-      if (state.viewMode === "week") {
-        weekCursor = minDate(addDays(weekCursor, 15), startOfDay(new Date()));
-      } else {
-        monthCursor = addMonths(monthCursor, 1);
-      }
-      renderMainContent();
-    });
-
-    refs.todayBtn.addEventListener("click", () => {
-      weekCursor = startOfDay(new Date());
-      monthCursor = startOfMonth(new Date());
-      renderMainContent();
-    });
-
-    refs.quickStrengthBtn.addEventListener("click", () => {
-      const strengthHabit = getStrengthHabit();
-      if (!strengthHabit) {
-        showToast("Strength Training habit not found.");
-        return;
-      }
-      const key = todayKey();
-      toggleCompletion(strengthHabit.id, key);
-    });
-
-    refs.manageHabitsBtn.addEventListener("click", () => {
-      renderHabitEditor();
-      refs.habitsModal.showModal();
-    });
-
-    refs.closeHabitsBtn.addEventListener("click", () => {
-      refs.habitsModal.close();
-    });
-
-    refs.addHabitBtn.addEventListener("click", () => {
-      addHabitFromInputs();
-    });
-
-    if (refs.newHabitType && refs.newHabitTarget) {
-      refs.newHabitType.addEventListener("change", () => {
-        const isCornerstone = refs.newHabitType.value === HABIT_TYPE_CORNERSTONE;
-        refs.newHabitTarget.disabled = isCornerstone;
-        refs.newHabitTarget.value = isCornerstone ? "7" : "3";
-      });
-    }
-
-    refs.newHabitName.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") {
-        return;
-      }
-      event.preventDefault();
-      addHabitFromInputs();
-    });
-
-    refs.habitEditorList.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action]");
-      if (!button) {
-        return;
-      }
-
-      const row = button.closest("[data-habit-id]");
-      if (!row) {
-        return;
-      }
-
-      const action = button.dataset.action;
-      const habitId = row.dataset.habitId;
-      if (!habitId) {
-        return;
-      }
-
-      if (action === "save-habit") {
-        saveHabitFromEditorRow(habitId, row);
-      } else if (action === "delete-habit") {
-        deleteHabit(habitId);
-      }
-    });
-
-    refs.habitEditorList.addEventListener("change", (event) => {
-      const select = event.target.closest("select[data-field='type']");
-      if (!select) {
-        return;
-      }
-      const row = select.closest("[data-habit-id]");
-      const targetInput = row?.querySelector("input[data-field='targetPerWeek']");
-      if (!targetInput) {
-        return;
-      }
-
-      const isCornerstone = select.value === HABIT_TYPE_CORNERSTONE;
-      targetInput.disabled = isCornerstone;
-      targetInput.value = isCornerstone ? "7" : targetInput.value || "3";
-    });
-
-    refs.todayChecklist.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action]");
-      if (!button) {
-        return;
-      }
-
-      const action = button.dataset.action;
-      const habitId = button.dataset.habitId;
-      if (!habitId) {
-        return;
-      }
-
-      if (action === "toggle") {
-        toggleCompletion(habitId, todayKey());
-      }
-    });
-
-    refs.weekTableBody.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action]");
-      if (!button) {
-        return;
-      }
-
-      const action = button.dataset.action;
-      const dateKey = button.dataset.dateKey;
-      if (!dateKey) {
-        return;
-      }
-
-      if (action === "toggle") {
-        const habitId = button.dataset.habitId;
-        if (!habitId) {
-          return;
-        }
-        toggleCompletion(habitId, dateKey);
-        return;
-      }
-
-      if (action === "open-day-details") {
-        openDayDetails(dateKey);
-      }
-    });
-
-    refs.weekTableBody.addEventListener("change", (event) => {
-      const input = event.target.closest("input[data-action='note']");
-      if (!input) {
-        return;
-      }
-
-      const dateKey = input.dataset.dateKey;
-      if (!dateKey) {
-        return;
-      }
-
-      state.dayNotes[dateKey] = String(input.value || "").trim();
-      persistState();
-    });
-
-    refs.weekCards.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action='toggle']");
-      if (!button) {
-        return;
-      }
-
-      const habitId = button.dataset.habitId;
-      const dateKey = button.dataset.dateKey;
-      if (!habitId || !dateKey) {
-        return;
-      }
-
-      toggleCompletion(habitId, dateKey);
-    });
-
-    refs.weekCards.addEventListener("change", (event) => {
-      const input = event.target.closest("input[data-action='note']");
-      if (!input) {
-        return;
-      }
-      const dateKey = input.dataset.dateKey;
-      if (!dateKey) {
-        return;
-      }
-
-      state.dayNotes[dateKey] = String(input.value || "").trim();
-      persistState();
-    });
-
-    refs.dayDetailsHabitsList.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action='toggle-day-detail-habit']");
-      if (!button) {
-        return;
-      }
-
-      const habitId = button.dataset.habitId;
-      const dateKey = button.dataset.dateKey;
-      if (!habitId || !dateKey) {
-        return;
-      }
-
-      toggleCompletion(habitId, dateKey);
-      renderDayDetails(dateKey);
-    });
-
-    refs.saveDayDetailsBtn.addEventListener("click", () => {
-      if (!activeDayDetailsKey) {
-        return;
-      }
-
-      state.dayNotes[activeDayDetailsKey] = String(refs.dayDetailsNoteInput.value || "").trim();
-      persistState();
-      renderAll();
-      refs.dayDetailsModal.close();
-      showToast("Day details saved.");
-    });
-
-    refs.closeDayDetailsBtn.addEventListener("click", () => {
-      refs.dayDetailsModal.close();
-    });
-
-    refs.monthGrid.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action='toggle-month-habit']");
-      if (!button) {
-        return;
-      }
-
-      const habitId = button.dataset.habitId;
-      const dateKey = button.dataset.dateKey;
-      if (!habitId || !dateKey) {
-        return;
-      }
-
-      toggleCompletion(habitId, dateKey);
-    });
-
-    refs.habitHeatmap.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action='toggle-heatmap-habit']");
-      if (!button) {
-        return;
-      }
-
-      const habitId = button.dataset.habitId;
-      const dateKey = button.dataset.dateKey;
-      if (!habitId || !dateKey) {
-        return;
-      }
-
-      toggleCompletion(habitId, dateKey);
-    });
-
-    refs.openSyncBtn.addEventListener("click", () => {
-      refs.syncModal.showModal();
-      renderSyncPanel();
-      renderGoogleSignInButton();
-    });
-
-    refs.closeSyncBtn.addEventListener("click", () => {
-      refs.syncModal.close();
-    });
-
-    refs.cloudEnabled.addEventListener("change", () => {
-      state.cloud.enabled = refs.cloudEnabled.checked;
-      persistState({ skipCloud: true });
-      renderSyncPanel();
-      if (!state.cloud.enabled) {
-        clearCloudTimers();
-        cloudRuntime.hasLocalChanges = false;
-        updateSyncStatus("local", "Local only");
-      } else {
-        startCloudPullTicker();
-        updateSyncStatus("local", "Cloud enabled, save config");
-      }
-      renderHeader();
-    });
-
-    refs.saveSyncBtn.addEventListener("click", () => {
-      const config = readCloudInputs();
-      state.cloud.webAppUrl = config.webAppUrl;
-      state.cloud.userId = config.userId;
-      persistState({ skipCloud: true });
-
-      if (!canUseCloudSync()) {
-        updateSyncStatus("error", "Missing URL or Google sign-in");
-        renderSyncPanel();
-        return;
-      }
-
-      updateSyncStatus("local", "Config saved");
-      void bootstrapCloudSyncNow();
-      renderSyncPanel();
-      showToast("Cloud config saved.");
-    });
-
-    refs.testSyncBtn.addEventListener("click", async () => {
-      const ok = await testCloudConnection();
-      if (ok) {
-        showToast("Cloud connection works.");
-      }
-    });
-
-    refs.signOutBtn.addEventListener("click", () => {
-      signOutGoogle();
-    });
-
-    refs.pullSyncBtn.addEventListener("click", async () => {
-      const ok = await pullFromCloud({ interactive: true });
-      if (ok) {
-        showToast("Pulled cloud data.");
-      }
-    });
-
-    refs.pushSyncBtn.addEventListener("click", async () => {
-      const ok = await pushToCloud({ reason: "manual" });
-      if (ok) {
-        showToast("Pushed data to cloud.");
-      }
-    });
-  }
-
-  function renderAll() {
-    renderHeader();
-    renderSidebarMode();
-    renderMainContent();
-    renderSyncPanel();
-  }
-
-  function renderHeader() {
-    refs.todayLabel.textContent = formatDateReadable(new Date());
-    if (state.viewMode === "week") {
-      refs.mainHeading.textContent = "Last 15 Days";
-      refs.mainSubheading.textContent = "Today first, then your previous 14 days of history.";
-    } else if (state.viewMode === "month") {
-      refs.mainHeading.textContent = "This Month";
-      refs.mainSubheading.textContent = "Calendar-driven daily execution and consistency.";
-    } else {
-      refs.mainHeading.textContent = "Monthly Heatmap";
-      refs.mainSubheading.textContent = "How each habit performed through this month.";
-    }
-    const strengthHabit = getStrengthHabit();
-    refs.quickStrengthBtn.disabled = !strengthHabit;
-    refs.quickStrengthBtn.textContent = strengthHabit ? `Toggle ${strengthHabit.name}` : "No Strength Habit";
-
-    updateSyncIndicators();
-    renderAuthIndicators();
-  }
-
-  function renderSidebarMode() {
-    refs.modeButtons.forEach((button) => {
-      button.classList.toggle("active", button.dataset.sidebarMode === state.sidebarMode);
-    });
-
-    refs.dailyPanel.classList.toggle("active", state.sidebarMode === "daily");
-    refs.analyticsPanel.classList.toggle("active", state.sidebarMode === "analytics");
-
-    renderTodayPanel();
-    renderAnalyticsPanel();
-  }
-
-  function renderTodayPanel() {
-    const today = new Date();
-    const key = toDateKey(today);
-    const fragment = document.createDocumentFragment();
-    const cornerstoneHabits = getHabitsByType(HABIT_TYPE_CORNERSTONE);
-    const regularHabits = getHabitsByType(HABIT_TYPE_REGULAR);
-
-    if (!cornerstoneHabits.length && !regularHabits.length) {
-      const empty = document.createElement("p");
-      empty.className = "month-empty";
-      empty.textContent = "No habits yet. Click Manage Habits to add one.";
-      refs.todayChecklist.replaceChildren(empty);
-    } else {
-      fragment.appendChild(renderTodayGroup("Cornerstone Habits", cornerstoneHabits, today, key));
-      fragment.appendChild(renderTodayGroup("Regular Habits", regularHabits, today, key));
-      refs.todayChecklist.replaceChildren(fragment);
-    }
-
-    const totals = getDayTotals(today);
-    renderSegmentTrack(refs.todaySegmentTrack, totals.rate);
-    refs.todaySummaryLabel.textContent = `${totals.completed}/${totals.scheduled} • ${Math.round(totals.rate * 100)}%`;
-  }
-
-  function renderTodayGroup(title, habits, today, dateKey) {
-    const section = document.createElement("section");
-    section.className = "today-group";
-
-    const heading = document.createElement("p");
-    heading.className = "today-group-title";
-    heading.textContent = title;
-    section.appendChild(heading);
-
-    if (!habits.length) {
-      const empty = document.createElement("p");
-      empty.className = "month-empty";
-      empty.textContent =
-        title === "Cornerstone Habits" ? "No cornerstone habits yet." : "No regular habits yet.";
-      section.appendChild(empty);
-      return section;
-    }
-
-    const list = document.createElement("div");
-    list.className = "today-group-list";
-    habits.forEach((habit) => {
-      list.appendChild(renderTodayHabitRow(habit, today, dateKey));
-    });
-    section.appendChild(list);
-    return section;
-  }
-
-  function renderTodayHabitRow(habit, today, dateKey) {
-    const isScheduled = isScheduledDay(habit, today);
-    const isDone = isCompleted(habit.id, dateKey);
-
-    const row = document.createElement("article");
-    row.className = `today-item${isScheduled ? "" : " offday"}`;
-    row.style.setProperty("--habit-color", habit.color);
-    row.innerHTML = `
-      <button type="button" data-action="noop">
-        <span>${habit.icon}</span>
-        <span>${escapeHtml(habit.name)}</span>
-      </button>
-      <button
-        class="mark-btn ${isDone ? "done" : ""}"
-        type="button"
-        data-action="toggle"
-        data-habit-id="${habit.id}"
-        title="${isDone ? "Undo" : "Mark done"}"
-      >✓</button>
-    `;
-    return row;
-  }
-
-  function renderAnalyticsPanel() {
-    const habits = getActiveHabits();
-    const fragment = document.createDocumentFragment();
-
-    habits.forEach((habit) => {
-      const rate = getHabitCompletionRate(habit, 30);
-      const item = document.createElement("article");
-      item.className = "analytics-item";
-      item.innerHTML = `
-        <div class="analytics-item-head">
-          <strong>${habit.icon} ${escapeHtml(habit.name)}</strong>
-          <span>${Math.round(rate * 100)}%</span>
-        </div>
-        <div class="micro-track"><span style="width:${Math.round(rate * 100)}%"></span></div>
-      `;
-      fragment.appendChild(item);
-    });
-
-    refs.analyticsHabitList.replaceChildren(fragment);
-  }
-
-  function renderHabitEditor() {
-    const fragment = document.createDocumentFragment();
-    const cornerstoneHabits = getHabitsByType(HABIT_TYPE_CORNERSTONE);
-    const regularHabits = getHabitsByType(HABIT_TYPE_REGULAR);
-
-    if (!cornerstoneHabits.length && !regularHabits.length) {
-      const empty = document.createElement("p");
-      empty.className = "month-empty";
-      empty.textContent = "No habits created yet.";
-      fragment.appendChild(empty);
-    } else {
-      fragment.appendChild(renderHabitEditorGroup("Cornerstone Habits", cornerstoneHabits));
-      fragment.appendChild(renderHabitEditorGroup("Regular Habits", regularHabits));
-    }
-
-    refs.habitEditorList.replaceChildren(fragment);
-  }
-
-  function renderHabitEditorGroup(title, habits) {
-    const section = document.createElement("section");
-    section.className = "habit-editor-group";
-
-    const heading = document.createElement("p");
-    heading.className = "habit-editor-group-title";
-    heading.textContent = title;
-    section.appendChild(heading);
-
-    if (!habits.length) {
-      const empty = document.createElement("p");
-      empty.className = "month-empty";
-      empty.textContent =
-        title === "Cornerstone Habits" ? "No cornerstone habits yet." : "No regular habits yet.";
-      section.appendChild(empty);
-      return section;
-    }
-
-    habits.forEach((habit) => {
-      const row = document.createElement("article");
-      row.className = "habit-editor-item";
-      row.dataset.habitId = habit.id;
-      const isCornerstone = habit.type === HABIT_TYPE_CORNERSTONE;
-      row.innerHTML = `
-        <input class="habit-editor-emoji" data-field="icon" type="text" value="${escapeHtmlAttr(habit.icon)}" maxlength="4" />
-        <input class="habit-editor-name" data-field="name" type="text" value="${escapeHtmlAttr(habit.name)}" />
-        <select data-field="type" class="habit-editor-type">
-          <option value="${HABIT_TYPE_CORNERSTONE}"${isCornerstone ? " selected" : ""}>Cornerstone</option>
-          <option value="${HABIT_TYPE_REGULAR}"${isCornerstone ? "" : " selected"}>Regular</option>
-        </select>
-        <input
-          class="habit-editor-target"
-          data-field="targetPerWeek"
-          type="number"
-          min="1"
-          max="7"
-          value="${isCornerstone ? "7" : String(habit.targetPerWeek || 3)}"
-          ${isCornerstone ? "disabled" : ""}
-          title="Days per week"
-        />
-        <button type="button" class="btn secondary" data-action="save-habit">Save</button>
-        <button type="button" class="btn ghost" data-action="delete-habit">Delete</button>
-      `;
-      section.appendChild(row);
-    });
-
-    return section;
-  }
-
-  function renderMainContent() {
-    renderViewMode();
-    if (state.viewMode === "week") {
-      try {
-        renderWeekTable();
-      } catch (error) {
-        refs.weekTableBody.innerHTML = `<tr><td colspan=\"99\">Could not render week table.</td></tr>`;
-      }
-    } else if (state.viewMode === "month") {
-      try {
-        renderMonthGrid();
-      } catch (error) {
-        refs.monthGrid.innerHTML = `<article class=\"month-day\"><p class=\"month-empty\">Could not render month view. Please refresh.</p></article>`;
-      }
-    } else {
-      try {
-        renderHabitHeatmap();
-      } catch (error) {
-        refs.habitHeatmap.innerHTML = `<p class=\"month-empty\">Could not render heatmap. Please refresh.</p>`;
-      }
-    }
-  }
-
-  function renderViewMode() {
-    refs.viewButtons.forEach((button) => {
-      button.classList.toggle("active", button.dataset.viewMode === state.viewMode);
-    });
-
-    refs.weekView.classList.toggle("active", state.viewMode === "week");
-    refs.monthView.classList.toggle("active", state.viewMode === "month");
-    refs.heatmapView.classList.toggle("active", state.viewMode === "heatmap");
-  }
-
-  function renderWeekTable() {
-    const topDate = startOfDay(weekCursor);
-    const oldestDate = addDays(topDate, -14);
-    refs.periodLabel.textContent = `${formatShortDate(topDate)} to ${formatShortDate(oldestDate)} (15 days)`;
-
-    const habits = getActiveHabits();
-    const compactDate = isCompactViewport();
-    const headRow = document.createElement("tr");
-
-    headRow.appendChild(makeTh("Date"));
-    habits.forEach((habit) => {
-      const th = makeTh(habit.icon);
-      th.className = "habit-col-head";
-      th.title = habit.name;
-      headRow.appendChild(th);
-    });
-    if (!compactDate) {
-      headRow.appendChild(makeTh("Progress"));
-      headRow.appendChild(makeTh("Notes"));
-    }
-    refs.weekTableHead.replaceChildren(headRow);
-
-    const bodyFragment = document.createDocumentFragment();
-
-    for (let i = 0; i < 15; i += 1) {
-      const date = addDays(topDate, -i);
-      const dateKey = toDateKey(date);
-      const row = document.createElement("tr");
-
-      const dateCell = document.createElement("td");
-      dateCell.className = "date-cell";
-      dateCell.innerHTML = `
-        <div class="date-cell-wrap">
-          <strong>${compactDate ? formatDateCompact(date) : formatDateWithWeekday(date)}</strong>
-          <button
-            type="button"
-            class="date-detail-btn"
-            data-action="open-day-details"
-            data-date-key="${dateKey}"
-            aria-label="Open details for ${formatDateReadable(date)}"
-            title="Open day details"
-          >Details</button>
-        </div>
-      `;
-      row.appendChild(dateCell);
-
-      habits.forEach((habit) => {
-        const scheduled = isScheduledDay(habit, date);
-        const done = isCompleted(habit.id, dateKey);
-
-        const td = document.createElement("td");
-        td.className = "habit-cell";
-        const button = document.createElement("button");
-        button.type = "button";
-        button.dataset.action = "toggle";
-        button.dataset.habitId = habit.id;
-        button.dataset.dateKey = dateKey;
-        button.className = `habit-toggle${done ? " done" : ""}${scheduled ? "" : " unscheduled"}${
-          dateKey === todayKey() ? " today" : ""
-        }`;
-        button.style.setProperty("--habit-color", habit.color);
-        button.textContent = done ? "✓" : "✓";
-        button.title = `${habit.name} • ${formatDateReadable(date)}`;
-        td.appendChild(button);
-        row.appendChild(td);
-      });
-
-      if (!compactDate) {
-        const totals = getDayTotals(date);
-        const progressCell = document.createElement("td");
-        progressCell.className = "row-progress";
-
-        const track = document.createElement("div");
-        track.className = "segment-track";
-        renderSegmentTrack(track, totals.rate);
-        const label = document.createElement("span");
-        label.className = "row-progress-value";
-        label.textContent = `${Math.round(totals.rate * 100)}%`;
-        progressCell.append(track, label);
-        row.appendChild(progressCell);
-
-        const noteCell = document.createElement("td");
-        const input = document.createElement("input");
-        input.className = "day-note-input";
-        input.type = "text";
-        input.placeholder = "Notes";
-        input.value = state.dayNotes[dateKey] || "";
-        input.dataset.action = "note";
-        input.dataset.dateKey = dateKey;
-        noteCell.appendChild(input);
-        row.appendChild(noteCell);
-      }
-
-      bodyFragment.appendChild(row);
-    }
-
-    refs.weekTableBody.replaceChildren(bodyFragment);
-  }
-
-  function openDayDetails(dateKey) {
-    activeDayDetailsKey = String(dateKey || "");
-    if (!activeDayDetailsKey) {
-      return;
-    }
-    renderDayDetails(activeDayDetailsKey);
-    refs.dayDetailsModal.showModal();
-  }
-
-  function renderDayDetails(dateKey) {
-    const date = fromDateKey(dateKey);
-    if (!date) {
-      return;
-    }
-
-    const totals = getDayTotals(date);
-    refs.dayDetailsTitle.textContent = formatDateWithWeekday(date);
-    refs.dayDetailsSummary.textContent = `${totals.completed}/${totals.scheduled} habits completed`;
-    renderSegmentTrack(refs.dayDetailsTrack, totals.rate);
-    refs.dayDetailsRate.textContent = `${Math.round(totals.rate * 100)}%`;
-    refs.dayDetailsNoteInput.value = state.dayNotes[dateKey] || "";
-
-    const habits = getActiveHabits();
-    const fragment = document.createDocumentFragment();
-    habits.forEach((habit) => {
-      const scheduled = isScheduledDay(habit, date);
-      const done = isCompleted(habit.id, dateKey);
-      const row = document.createElement("div");
-      row.className = `day-detail-habit-row${scheduled ? "" : " offday"}`;
-      row.style.setProperty("--habit-color", habit.color);
-      row.innerHTML = `
-        <span>${habit.icon} ${escapeHtml(habit.name)}</span>
-        <button
-          type="button"
-          class="mark-btn ${done ? "done" : ""}"
-          data-action="toggle-day-detail-habit"
-          data-habit-id="${habit.id}"
-          data-date-key="${dateKey}"
-          title="${done ? "Undo" : "Mark done"}"
-        >✓</button>
-      `;
-      fragment.appendChild(row);
-    });
-
-    refs.dayDetailsHabitsList.replaceChildren(fragment);
-  }
-
-  function renderWeekCards(weekStart, habits) {
-    if (!refs.weekCards) {
-      return;
-    }
-
-    const fragment = document.createDocumentFragment();
-
-    for (let i = 0; i < 7; i += 1) {
-      const date = addDays(weekStart, i);
-      const dateKey = toDateKey(date);
-      const totals = getDayTotals(date);
-
-      const card = document.createElement("article");
-      card.className = "week-card";
-      if (dateKey === todayKey()) {
-        card.classList.add("today");
-      }
-
-      const head = document.createElement("header");
-      head.className = "week-card-head";
-      head.innerHTML = `<strong>${formatDateWithWeekday(date)}</strong><span>${Math.round(totals.rate * 100)}%</span>`;
-      card.appendChild(head);
-
-      const list = document.createElement("div");
-      list.className = "week-card-list";
-      habits.forEach((habit) => {
-        const done = isCompleted(habit.id, dateKey);
-        const scheduled = isScheduledDay(habit, date);
-
-        const item = document.createElement("div");
-        item.className = `week-card-item${scheduled ? "" : " offday"}`;
-        item.style.setProperty("--habit-color", habit.color);
-        item.innerHTML = `
-          <span>${habit.icon} ${escapeHtml(habit.name)}</span>
-          <button
-            type="button"
-            class="mark-btn ${done ? "done" : ""}"
-            data-action="toggle"
-            data-habit-id="${habit.id}"
-            data-date-key="${dateKey}"
-            title="${done ? "Undo" : "Mark done"}"
-          >✓</button>
-        `;
-        list.appendChild(item);
-      });
-      card.appendChild(list);
-
-      const note = document.createElement("input");
-      note.className = "day-note-input";
-      note.type = "text";
-      note.placeholder = "Notes";
-      note.value = state.dayNotes[dateKey] || "";
-      note.dataset.action = "note";
-      note.dataset.dateKey = dateKey;
-      card.appendChild(note);
-
-      fragment.appendChild(card);
-    }
-
-    refs.weekCards.replaceChildren(fragment);
-  }
-
-  function renderMonthGrid() {
-    const monthStart = startOfMonth(monthCursor);
-    refs.periodLabel.textContent = monthStart.toLocaleDateString(undefined, {
-      month: "long",
-      year: "numeric",
-    });
-
-    const habits = getActiveHabits();
-    const gridStart = startOfWeek(monthStart, WEEK_STARTS_ON);
-    const fragment = document.createDocumentFragment();
-
-    orderedDays().forEach((day) => {
-      const header = document.createElement("p");
-      header.className = "month-header";
-      header.textContent = DAY_LABELS[day];
-      fragment.appendChild(header);
-    });
-
-    for (let cellIndex = 0; cellIndex < 42; cellIndex += 1) {
-      const date = addDays(gridStart, cellIndex);
-      const dateKey = toDateKey(date);
-      const dayCard = document.createElement("article");
-      dayCard.className = "month-day";
-      if (date.getMonth() !== monthStart.getMonth()) {
-        dayCard.classList.add("other-month");
-      }
-      if (dateKey === todayKey()) {
-        dayCard.classList.add("today");
-      }
-
-      const totals = getDayTotals(date);
-      const dueHabits = habits.filter((habit) => isScheduledDay(habit, date));
-      const topDueHabits = dueHabits.slice(0, 5);
-
-      const head = document.createElement("div");
-      head.className = "month-day-head";
-      head.innerHTML = `<strong>${date.getDate()}</strong><span>${Math.round(totals.rate * 100)}%</span>`;
-      dayCard.appendChild(head);
-
-      const list = document.createElement("div");
-      list.className = "month-habit-list";
-
-      if (!topDueHabits.length) {
-        const empty = document.createElement("p");
-        empty.className = "month-empty";
-        empty.textContent = "Rest day";
-        list.appendChild(empty);
-      }
-
-      topDueHabits.forEach((habit) => {
-        const done = isCompleted(habit.id, dateKey);
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `month-habit-btn${done ? " done" : ""}`;
-        button.style.setProperty("--habit-color", habit.color);
-        button.dataset.action = "toggle-month-habit";
-        button.dataset.habitId = habit.id;
-        button.dataset.dateKey = dateKey;
-        button.innerHTML = `<span class="tick">✓</span><span>${habit.icon} ${escapeHtml(habit.name)}</span>`;
-        list.appendChild(button);
-      });
-
-      if (dueHabits.length > topDueHabits.length) {
-        const more = document.createElement("p");
-        more.className = "month-empty";
-        more.textContent = `+${dueHabits.length - topDueHabits.length} more`;
-        list.appendChild(more);
-      }
-
-      dayCard.appendChild(list);
-
-      const miniTrack = document.createElement("div");
-      miniTrack.className = "segment-track";
-      renderSegmentTrack(miniTrack, totals.rate);
-      dayCard.appendChild(miniTrack);
-
-      fragment.appendChild(dayCard);
-    }
-
-    refs.monthGrid.replaceChildren(fragment);
-  }
-
-  function renderHabitHeatmap() {
-    const monthStart = startOfMonth(monthCursor);
-    refs.periodLabel.textContent = monthStart.toLocaleDateString(undefined, {
-      month: "long",
-      year: "numeric",
-    });
-
-    const habits = getActiveHabits();
-    const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
-
-    if (!habits.length) {
-      refs.habitHeatmap.innerHTML = `<p class="month-empty">No habits yet. Click Manage Habits to add one.</p>`;
-      return;
-    }
-
-    const wrapper = document.createElement("div");
-    wrapper.className = "heatmap-wrap";
-
-    const legend = document.createElement("div");
-    legend.className = "heatmap-legend";
-    legend.innerHTML = `
-      <span>Low</span>
-      <span class="heatmap-legend-cell rest" title="Not scheduled"></span>
-      <span class="heatmap-legend-cell missed" title="Scheduled but missed"></span>
-      <span class="heatmap-legend-cell done level-1" title="Completed"></span>
-      <span class="heatmap-legend-cell done level-2" title="Completed"></span>
-      <span class="heatmap-legend-cell done level-3" title="Completed"></span>
-      <span class="heatmap-legend-cell done level-4" title="Completed"></span>
-      <span>High</span>
-    `;
-    wrapper.appendChild(legend);
-
-    const table = document.createElement("div");
-    table.className = "heatmap-table";
-    table.style.setProperty("--heatmap-days", String(daysInMonth));
-
-    const headRow = document.createElement("div");
-    headRow.className = "heatmap-row heatmap-head-row";
-    headRow.innerHTML = `<p class="heatmap-habit-head">Habit</p>`;
-
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      const dayLabel = document.createElement("span");
-      dayLabel.className = "heatmap-day-label";
-      dayLabel.textContent = day % 2 === 0 || day === 1 || day === daysInMonth ? String(day) : "";
-      headRow.appendChild(dayLabel);
-    }
-    table.appendChild(headRow);
-
-    habits.forEach((habit) => {
-      const row = document.createElement("div");
-      row.className = "heatmap-row";
-
-      const label = document.createElement("p");
-      label.className = "heatmap-habit-label";
-      const monthRate = getHabitCompletionRateForMonth(habit, monthStart, daysInMonth);
-      label.innerHTML = `
-        <span>${habit.icon} ${escapeHtml(habit.name)}</span>
-        <strong>${Math.round(monthRate * 100)}%</strong>
-      `;
-      row.appendChild(label);
-
-      for (let day = 1; day <= daysInMonth; day += 1) {
-        const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
-        const dateKey = toDateKey(date);
-        const heat = getHabitHeatCell(habit, date, monthStart);
-
-        const cell = document.createElement("button");
-        cell.type = "button";
-        cell.className = "heatmap-cell";
-        cell.classList.add(heat.kind);
-        if (heat.kind === "done") {
-          cell.classList.add(`level-${heat.level}`);
-        }
-        if (dateKey === todayKey()) {
-          cell.classList.add("today");
-        }
-        cell.dataset.action = "toggle-heatmap-habit";
-        cell.dataset.habitId = habit.id;
-        cell.dataset.dateKey = dateKey;
-        cell.title = `${habit.name} • ${formatDateReadable(date)} • ${heat.label}`;
-        cell.setAttribute("aria-label", `${habit.name}, ${formatDateReadable(date)}, ${heat.label}`);
-        row.appendChild(cell);
-      }
-
-      table.appendChild(row);
-    });
-
-    wrapper.appendChild(table);
-    refs.habitHeatmap.replaceChildren(wrapper);
-  }
-
-  function renderSyncPanel() {
-    refs.cloudEnabled.checked = Boolean(state.cloud.enabled);
-    refs.cloudWebAppUrl.value = state.cloud.webAppUrl || "";
-    refs.cloudUserId.value = state.cloud.userId || "default";
-
-    const canActions = canUseCloudSync();
-    refs.testSyncBtn.disabled = !canActions;
-    refs.pullSyncBtn.disabled = !canActions;
-    refs.pushSyncBtn.disabled = !canActions;
-
-    const lastDate = state.cloud.lastSyncedAt ? new Date(state.cloud.lastSyncedAt) : null;
-    refs.syncLastText.textContent =
-      lastDate && Number.isFinite(lastDate.getTime())
-        ? `Last sync: ${formatDateTimeReadable(lastDate)}`
-        : "Last sync: never";
-
-    updateSyncIndicators();
-    renderAuthIndicators();
-    renderGoogleSignInButton();
-  }
-
-  function toggleCompletion(habitId, dateKey) {
-    const current = getEntry(habitId, dateKey);
-    const next = !Boolean(current.completed);
-    upsertEntry(habitId, dateKey, {
-      ...current,
-      completed: next,
-      updatedAt: new Date().toISOString(),
-    });
-
-    if (!next && !current.note && !current.duration && !current.intensity) {
-      const byHabit = state.entries[habitId];
-      if (byHabit) {
-        delete byHabit[dateKey];
-      }
-    }
-
-    persistState();
-    renderAll();
-  }
-
-  function addHabitFromInputs() {
-    const name = sanitizeHabitName(refs.newHabitName.value);
-    const icon = sanitizeHabitIcon(refs.newHabitEmoji.value);
-    const type = normalizeHabitType(refs.newHabitType?.value);
-    const targetInput = clampNumber(Number(refs.newHabitTarget?.value || 3), 1, 7);
-    const targetPerWeek = type === HABIT_TYPE_CORNERSTONE ? 7 : targetInput;
-
-    if (!name) {
-      showToast("Please enter a habit name.");
-      refs.newHabitName.focus();
-      return;
-    }
-
-    const newHabit = {
-      id: `habit_${generateId()}`,
-      name,
-      icon,
-      color: pickHabitColor(name),
-      type,
-      targetPerWeek,
-      scheduledDays: buildScheduledDaysFromTarget(targetPerWeek, type),
-      archived: false,
-    };
-
-    state.habits.push(newHabit);
-    state.entries[newHabit.id] = {};
-
-    refs.newHabitName.value = "";
-    refs.newHabitEmoji.value = "";
-    if (refs.newHabitType && refs.newHabitTarget) {
-      refs.newHabitType.value = HABIT_TYPE_REGULAR;
-      refs.newHabitTarget.value = "3";
-      refs.newHabitTarget.disabled = false;
-    }
-
-    persistState();
-    renderAll();
-    renderHabitEditor();
-    showToast("Habit added.");
-  }
-
-  function saveHabitFromEditorRow(habitId, row) {
-    const index = findHabitIndexById(habitId);
-    if (index < 0) {
-      return;
-    }
-
-    const nameInput = row.querySelector("[data-field='name']");
-    const iconInput = row.querySelector("[data-field='icon']");
-    const typeInput = row.querySelector("[data-field='type']");
-    const targetInput = row.querySelector("[data-field='targetPerWeek']");
-
-    const nextName = sanitizeHabitName(nameInput?.value);
-    const nextIcon = sanitizeHabitIcon(iconInput?.value);
-    const nextType = normalizeHabitType(typeInput?.value);
-    const nextTarget = clampNumber(Number(targetInput?.value || 3), 1, 7);
-
-    if (!nextName) {
-      showToast("Habit name cannot be empty.");
-      if (nameInput) {
-        nameInput.focus();
-      }
-      return;
-    }
-
-    const prevHabit = state.habits[index];
-    const isCornerstone = nextType === HABIT_TYPE_CORNERSTONE;
-    const resolvedTarget = isCornerstone ? 7 : nextTarget;
-    const shouldRebuildSchedule =
-      prevHabit.type !== nextType || prevHabit.targetPerWeek !== resolvedTarget || isCornerstone;
-
-    state.habits[index] = {
-      ...prevHabit,
-      name: nextName,
-      icon: nextIcon,
-      type: nextType,
-      targetPerWeek: resolvedTarget,
-      scheduledDays: shouldRebuildSchedule
-        ? buildScheduledDaysFromTarget(resolvedTarget, nextType)
-        : normalizeDays(prevHabit.scheduledDays),
-    };
-
-    persistState();
-    renderAll();
-    renderHabitEditor();
-    showToast("Habit updated.");
-  }
-
-  function deleteHabit(habitId) {
-    const index = findHabitIndexById(habitId);
-    if (index < 0) {
-      return;
-    }
-
-    if (state.habits.length <= 1) {
-      showToast("At least one habit is required.");
-      return;
-    }
-
-    const habit = state.habits[index];
-    const confirmed = window.confirm(`Delete "${habit.name}"?`);
-    if (!confirmed) {
-      return;
-    }
-
-    state.habits.splice(index, 1);
-    delete state.entries[habitId];
-
-    persistState();
-    renderAll();
-    renderHabitEditor();
-    showToast("Habit deleted.");
-  }
-
-  function getActiveHabits() {
-    return state.habits
-      .filter((habit) => !habit.archived)
-      .sort((a, b) => getHabitTypeRank(a.type) - getHabitTypeRank(b.type));
-  }
-
-  function getHabitsByType(type) {
-    return getActiveHabits().filter((habit) => habit.type === type);
-  }
-
-  function findHabitIndexById(habitId) {
-    return state.habits.findIndex((habit) => habit.id === habitId);
-  }
-
-  function getStrengthHabit() {
-    const habits = getActiveHabits();
-    const exact = habits.find((habit) => habit.id === "habit_strength_training");
-    if (exact) {
-      return exact;
-    }
-    return habits.find((habit) => habit.name.toLowerCase().includes("strength")) || null;
-  }
-
-  function getEntry(habitId, dateKey) {
-    return state.entries[habitId]?.[dateKey] || {};
-  }
-
-  function upsertEntry(habitId, dateKey, patch) {
-    if (!state.entries[habitId]) {
-      state.entries[habitId] = {};
-    }
-    state.entries[habitId][dateKey] = {
-      ...(state.entries[habitId][dateKey] || {}),
-      ...patch,
-    };
-  }
-
-  function isCompleted(habitId, dateKey) {
-    return Boolean(state.entries[habitId]?.[dateKey]?.completed);
-  }
-
-  function getDayTotals(date) {
-    const habits = getActiveHabits();
-    const key = toDateKey(date);
-    let scheduled = 0;
-    let completed = 0;
-
-    habits.forEach((habit) => {
-      if (!isScheduledDay(habit, date)) {
-        return;
-      }
-      scheduled += 1;
-      if (isCompleted(habit.id, key)) {
-        completed += 1;
-      }
-    });
-
-    return {
-      scheduled,
-      completed,
-      rate: scheduled ? completed / scheduled : 0,
-    };
-  }
-
-  function getHabitCompletionRate(habit, daysBack) {
-    let scheduled = 0;
-    let completed = 0;
-
-    for (let i = 0; i < daysBack; i += 1) {
-      const date = addDays(new Date(), -i);
-      if (!isScheduledDay(habit, date)) {
-        continue;
-      }
-
-      scheduled += 1;
-      if (isCompleted(habit.id, toDateKey(date))) {
-        completed += 1;
-      }
-    }
-
-    return scheduled ? completed / scheduled : 0;
-  }
-
-  function getHabitCompletionRateForMonth(habit, monthStart, daysInMonth) {
-    let scheduled = 0;
-    let completed = 0;
-
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
-      if (!isScheduledDay(habit, date)) {
-        continue;
-      }
-      scheduled += 1;
-      if (isCompleted(habit.id, toDateKey(date))) {
-        completed += 1;
-      }
-    }
-
-    return scheduled ? completed / scheduled : 0;
-  }
-
-  function getHabitHeatCell(habit, date, monthStart) {
-    const scheduled = isScheduledDay(habit, date);
-    if (!scheduled) {
-      return {
-        kind: "rest",
-        level: 0,
-        label: "Rest day",
-      };
-    }
-
-    const done = isCompleted(habit.id, toDateKey(date));
-    if (!done) {
-      return {
-        kind: "missed",
-        level: 0,
-        label: "Missed",
-      };
-    }
-
-    let streak = 0;
-    for (let i = 0; i < 31; i += 1) {
-      const current = addDays(date, -i);
-      if (current < monthStart) {
-        break;
-      }
-      if (!isScheduledDay(habit, current)) {
-        continue;
-      }
-      if (isCompleted(habit.id, toDateKey(current))) {
-        streak += 1;
-      } else {
-        break;
-      }
-    }
-
-    let level = 1;
-    if (streak >= 7) {
-      level = 4;
-    } else if (streak >= 4) {
-      level = 3;
-    } else if (streak >= 2) {
-      level = 2;
-    }
-
-    return {
-      kind: "done",
-      level,
-      label: `Done • ${streak}-day streak`,
-    };
-  }
-
-  function renderSegmentTrack(container, rate) {
-    container.replaceChildren();
-    const filled = Math.max(0, Math.min(10, Math.round(rate * 10)));
-
-    for (let i = 0; i < 10; i += 1) {
-      const seg = document.createElement("span");
-      seg.className = `segment${i < filled ? " filled" : ""}`;
-      container.appendChild(seg);
-    }
-  }
-
-  function makeTh(text) {
-    const th = document.createElement("th");
-    th.textContent = text;
-    return th;
-  }
-
-  function isScheduledDay(habit, date) {
-    const schedule = normalizeDays(habit.scheduledDays);
-    return schedule.includes(date.getDay());
-  }
-
-  function orderedDays() {
-    return [1, 2, 3, 4, 5, 6, 0];
-  }
-
-  function readCloudInputs() {
-    return {
-      webAppUrl: normalizeCloudUrl(refs.cloudWebAppUrl.value),
-      userId: normalizeCloudUserId(refs.cloudUserId.value),
-    };
-  }
-
-  function initializeCloudSync() {
-    startCloudPullTicker();
-
-    if (!state.cloud.enabled) {
-      updateSyncStatus("local", "Cloud not configured");
-      return Promise.resolve(false);
-    }
-
-    if (!canUseCloudSync()) {
-      updateSyncStatus("error", "Missing cloud config");
-      return Promise.resolve(false);
-    }
-
-    updateSyncStatus("syncing", "Connecting...");
-    return bootstrapCloudSyncNow();
-  }
-
-  async function bootstrapCloudSyncNow() {
-    if (!canUseCloudSync()) {
-      return false;
-    }
-
-    updateSyncStatus("syncing", "Starting cloud sync...");
-
-    const pulled = await pullFromCloud({ interactive: false, force: false });
-    if (!pulled && cloudRuntime.lastPullReason === "empty") {
-      updateSyncStatus("syncing", "Initializing cloud record...");
-      await pushToCloud({ reason: "manual" });
-      return true;
-    }
-    return pulled;
-  }
-
-  function startCloudPullTicker() {
-    if (cloudRuntime.pullTimer) {
-      clearInterval(cloudRuntime.pullTimer);
-    }
-
-    cloudRuntime.pullTimer = window.setInterval(() => {
-      if (!canUseCloudSync()) {
-        return;
-      }
-      void pullFromCloud({ interactive: false, skipIfDirty: true });
-    }, CLOUD_PULL_INTERVAL_MS);
-  }
-
-  function clearCloudTimers() {
-    if (cloudRuntime.pullTimer) {
-      clearInterval(cloudRuntime.pullTimer);
-      cloudRuntime.pullTimer = null;
-    }
-
-    if (cloudRuntime.pushTimer) {
-      clearTimeout(cloudRuntime.pushTimer);
-      cloudRuntime.pushTimer = null;
-    }
-  }
-
-  function canUseCloudSync() {
-    return Boolean(
-      state.cloud.enabled &&
-        state.cloud.webAppUrl &&
-        state.auth &&
-        state.auth.idToken &&
-        !isJwtExpired(state.auth.idToken, 45),
-    );
-  }
-
-  function scheduleCloudPush(options = {}) {
-    const { delayMs = CLOUD_SYNC_DEBOUNCE_MS, statusMessage = "Sync queued" } = options;
-
-    if (!canUseCloudSync()) {
-      return;
-    }
-
-    cloudRuntime.hasLocalChanges = true;
-    updateSyncStatus("syncing", statusMessage);
-
-    if (cloudRuntime.pushTimer) {
-      clearTimeout(cloudRuntime.pushTimer);
-    }
-
-    cloudRuntime.pushTimer = window.setTimeout(() => {
-      cloudRuntime.pushTimer = null;
-      void pushToCloud({ reason: "auto" });
-    }, Math.max(100, Number(delayMs) || CLOUD_SYNC_DEBOUNCE_MS));
-  }
-
-  async function testCloudConnection() {
-    if (!canUseCloudSync()) {
-      updateSyncStatus("error", "Missing URL or Google sign-in");
-      renderAll();
-      return false;
-    }
-
-    if (cloudRuntime.inFlight) {
-      return false;
-    }
-
-    cloudRuntime.inFlight = true;
-    updateSyncStatus("syncing", "Testing...");
-    renderAll();
-
-    try {
-      await requestCloudApi("ping");
-      updateSyncStatus("synced", "Cloud connected");
-      return true;
-    } catch (error) {
-      updateSyncStatus("error", `Test failed: ${getErrorMessage(error)}`);
-      return false;
-    } finally {
-      cloudRuntime.inFlight = false;
-      renderAll();
-    }
-  }
-
-  async function pullFromCloud(options = {}) {
-    const { interactive = false, skipIfDirty = false, force = false } = options;
-
-    if (!canUseCloudSync()) {
-      cloudRuntime.lastPullReason = "missing_config";
-      return false;
-    }
-
-    if (cloudRuntime.inFlight) {
-      cloudRuntime.lastPullReason = "busy";
-      return false;
-    }
-
-    if (skipIfDirty && cloudRuntime.hasLocalChanges) {
-      cloudRuntime.lastPullReason = "dirty";
-      return false;
-    }
-
-    cloudRuntime.inFlight = true;
-    updateSyncStatus("syncing", "Pulling...");
-    renderAll();
-
-    try {
-      const response = await requestCloudApi("sync");
-      const serverState = response.state;
-      const serverUpdatedAt = String(response.updatedAt || "");
-
-      if (!serverState || typeof serverState !== "object") {
-        updateSyncStatus("local", "Cloud empty");
-        cloudRuntime.lastPullReason = "empty";
-        return false;
-      }
-
-      if (!interactive && !state.cloud.lastSyncedAt && hasMeaningfulLocalData() && !force) {
-        updateSyncStatus("local", "Cloud connected. Push local data first");
-        cloudRuntime.lastPullReason = "needs_manual_push";
-        return false;
-      }
-
-      const isNewer =
-        force ||
-        !state.cloud.lastSyncedAt ||
-        !serverUpdatedAt ||
-        serverUpdatedAt > state.cloud.lastSyncedAt;
-
-      if (!isNewer) {
-        updateSyncStatus("synced", "Already up to date");
-        cloudRuntime.lastPullReason = "up_to_date";
-        return true;
-      }
-
-      if (cloudRuntime.hasLocalChanges && !interactive) {
-        scheduleCloudPush({ delayMs: CLOUD_PUSH_RETRY_MS, statusMessage: "Sync waiting..." });
-        updateSyncStatus("offline", "Local changes waiting to upload");
-        cloudRuntime.lastPullReason = "local_changes_pending";
-        return false;
-      }
-
-      if (interactive) {
-        const confirmed = window.confirm("Replace local data with cloud data?");
-        if (!confirmed) {
-          updateSyncStatus("local", "Pull cancelled");
-          cloudRuntime.lastPullReason = "cancelled";
-          return false;
-        }
-      }
-
-      const localCloud = { ...state.cloud };
-      const localAuth = { ...state.auth };
-      state = normalizeState(serverState);
-      state.cloud = {
-        ...state.cloud,
-        enabled: localCloud.enabled,
-        webAppUrl: localCloud.webAppUrl,
-        userId: localCloud.userId,
-        lastSyncedAt: serverUpdatedAt || new Date().toISOString(),
-      };
-      const preservedToken = isJwtExpired(localAuth.idToken, 45) ? "" : localAuth.idToken;
-      state.auth = {
-        ...state.auth,
-        email: preservedToken ? localAuth.email || "" : "",
-        idToken: preservedToken || "",
-        signedIn: Boolean(preservedToken),
-      };
-
-      cloudRuntime.hasLocalChanges = false;
-      persistState({ skipCloud: true, silent: true });
-      renderAll();
-      updateSyncStatus("synced", "Pulled from cloud");
-      cloudRuntime.lastPullReason = "pulled";
-      return true;
-    } catch (error) {
-      updateSyncStatus("error", `Pull failed: ${getErrorMessage(error)}`);
-      cloudRuntime.lastPullReason = "error";
-      return false;
-    } finally {
-      cloudRuntime.inFlight = false;
-      renderAll();
-    }
-  }
-
-  async function pushToCloud(options = {}) {
-    const { reason = "auto" } = options;
-
-    if (!canUseCloudSync()) {
-      return false;
-    }
-
-    if (cloudRuntime.inFlight) {
-      scheduleCloudPush({ delayMs: CLOUD_PUSH_RETRY_MS, statusMessage: "Sync waiting..." });
-      return false;
-    }
-
-    cloudRuntime.inFlight = true;
-    updateSyncStatus("syncing", reason === "manual" ? "Pushing..." : "Syncing...");
-    renderAll();
-
-    try {
-      const response = await requestCloudApi("push", {
-        state: buildCloudPayload(),
-        clientUpdatedAt: new Date().toISOString(),
-      });
-
-      state.cloud.lastSyncedAt = String(response.updatedAt || new Date().toISOString());
-      cloudRuntime.hasLocalChanges = false;
-      persistState({ skipCloud: true, silent: true });
-      updateSyncStatus("synced", "Synced");
-      return true;
-    } catch (error) {
-      cloudRuntime.hasLocalChanges = true;
-      scheduleCloudPush({ delayMs: CLOUD_PUSH_ERROR_RETRY_MS, statusMessage: "Retrying sync..." });
-      updateSyncStatus("offline", `Push pending: ${getErrorMessage(error)}`);
-      return false;
-    } finally {
-      cloudRuntime.inFlight = false;
-      renderAll();
-    }
-  }
-
-  async function requestCloudApi(action, payload = {}) {
-    const requestBody = {
-      action,
-      idToken: state.auth.idToken,
-      userId: state.cloud.userId,
-      ...payload,
-    };
-
-    let response;
-    try {
-      response = await fetch(state.cloud.webAppUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8",
-        },
-        body: JSON.stringify(requestBody),
-      });
-    } catch (error) {
-      throw new Error("Network request failed");
-    }
-
-    const text = await response.text();
-    let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch (error) {
-      throw new Error("Invalid response from Apps Script");
-    }
-
-    if (!response.ok || !parsed || parsed.ok !== true) {
-      const message = parsed?.error || `HTTP ${response.status}`;
-      if (/unauthorized/i.test(String(message))) {
-        state.auth.idToken = "";
-        state.auth.email = "";
-        state.auth.signedIn = false;
-        persistState({ skipCloud: true, silent: true });
-        renderAuthIndicators();
-      }
-      throw new Error(message);
-    }
-
-    return parsed;
-  }
-
-  function buildCloudPayload() {
-    const snapshot = cloneData(state);
-    snapshot.cloud = {
-      enabled: state.cloud.enabled,
-      userId: state.cloud.userId,
-      lastSyncedAt: state.cloud.lastSyncedAt,
-    };
-    snapshot.auth = {
-      email: "",
-      idToken: "",
-      signedIn: false,
-    };
-    return snapshot;
-  }
-
-  function hasMeaningfulLocalData() {
-    return getTotalCompletions() > 0 || Object.keys(state.dayNotes).length > 0;
-  }
-
-  function getTotalCompletions() {
-    let count = 0;
-    Object.values(state.entries).forEach((byDate) => {
-      Object.values(byDate).forEach((entry) => {
-        if (entry && entry.completed) {
-          count += 1;
-        }
-      });
-    });
-    return count;
-  }
-
-  function updateSyncStatus(status, message) {
-    cloudRuntime.status = status;
-    cloudRuntime.message = message;
-  }
-
-  function updateSyncIndicators() {
-    refs.syncBadge.textContent = cloudRuntime.message;
-    refs.syncBadge.className = `sync-badge ${cloudRuntime.status}`;
-
-    refs.syncStatusText.textContent = cloudRuntime.message;
-    refs.syncStatusText.className = `sync-badge ${cloudRuntime.status}`;
-  }
-
-  function normalizeState(raw) {
-    const template = buildStateTemplate();
-    const next = {
-      ...template,
-      ...(raw && typeof raw === "object" ? raw : {}),
-    };
-
-    next.version = Number(next.version) || template.version;
-    next.sidebarMode = next.sidebarMode === "analytics" ? "analytics" : "daily";
-    next.viewMode = ["week", "month", "heatmap"].includes(next.viewMode) ? next.viewMode : "week";
-
-    next.habits = Array.isArray(next.habits) ? next.habits : [];
-    next.habits = next.habits
-      .filter((habit) => habit && typeof habit === "object")
-      .map((habit) => {
-        const type = normalizeHabitType(habit.type);
-        const targetPerWeek = type === HABIT_TYPE_CORNERSTONE ? 7 : clampNumber(Number(habit.targetPerWeek || 3), 1, 7);
-        return {
-          id: String(habit.id || `habit_${generateId()}`),
-          name: String(habit.name || "Untitled Habit"),
-          icon: String(habit.icon || "✅").slice(0, 4),
-          color: normalizeHexColor(habit.color || "#2563d2"),
-          type,
-          targetPerWeek,
-          scheduledDays: buildScheduledDaysFromTarget(targetPerWeek, type, habit.scheduledDays),
-          archived: Boolean(habit.archived),
-        };
-      });
-
-    seedDefaultHabits(next);
-
-    next.entries = next.entries && typeof next.entries === "object" ? next.entries : {};
-    next.habits.forEach((habit) => {
-      if (!next.entries[habit.id] || typeof next.entries[habit.id] !== "object") {
-        next.entries[habit.id] = {};
-      }
-    });
-
-    next.dayNotes = next.dayNotes && typeof next.dayNotes === "object" ? next.dayNotes : {};
-
-    next.cloud = {
-      ...template.cloud,
-      ...(next.cloud && typeof next.cloud === "object" ? next.cloud : {}),
-    };
-    next.cloud.enabled = Boolean(next.cloud.enabled);
-    next.cloud.webAppUrl = normalizeCloudUrl(next.cloud.webAppUrl);
-    next.cloud.userId = normalizeCloudUserId(next.cloud.userId);
-    next.cloud.lastSyncedAt = String(next.cloud.lastSyncedAt || "");
-
-    next.auth = {
-      ...template.auth,
-      ...(next.auth && typeof next.auth === "object" ? next.auth : {}),
-    };
-    next.auth.email = String(next.auth.email || "").toLowerCase();
-    next.auth.idToken = String(next.auth.idToken || "");
-    if (isJwtExpired(next.auth.idToken, 45)) {
-      next.auth.idToken = "";
-    }
-    if (AUTH_CONFIG.allowedEmail && next.auth.email && next.auth.email !== AUTH_CONFIG.allowedEmail) {
-      next.auth.idToken = "";
-      next.auth.email = "";
-    }
-    next.auth.signedIn = Boolean(next.auth.idToken);
-
-    return next;
-  }
-
-  function seedDefaultHabits(targetState) {
-    if (targetState.habits.length > 0) {
-      return;
-    }
-    targetState.habits = cloneData(DEFAULT_HABITS);
-  }
-
-  function buildStateTemplate() {
-    return {
-      version: 2,
-      sidebarMode: "daily",
-      viewMode: "week",
-      habits: cloneData(DEFAULT_HABITS),
-      entries: {},
-      dayNotes: {},
-      cloud: {
-        enabled: Boolean(CLOUD_BOOT_CONFIG.enabled),
-        webAppUrl: normalizeCloudUrl(CLOUD_BOOT_CONFIG.webAppUrl),
-        userId: normalizeCloudUserId(CLOUD_BOOT_CONFIG.userId),
-        lastSyncedAt: "",
-      },
-      auth: {
-        email: "",
-        idToken: "",
-        signedIn: false,
-      },
-    };
-  }
-
-  function readCloudBootConfig() {
-    const fromWindow =
-      typeof window !== "undefined" &&
-      window.DISCIPLINE_OS_CLOUD_CONFIG &&
-      typeof window.DISCIPLINE_OS_CLOUD_CONFIG === "object"
-        ? window.DISCIPLINE_OS_CLOUD_CONFIG
-        : null;
-
-    const merged = {
-      ...FALLBACK_CLOUD_BOOT_CONFIG,
-      ...(fromWindow || {}),
-    };
-
-    return {
-      enabled: Boolean(merged.enabled),
-      webAppUrl: normalizeCloudUrl(merged.webAppUrl),
-      userId: normalizeCloudUserId(merged.userId),
-    };
-  }
-
-  function readAuthConfig() {
-    const fromWindow =
-      typeof window !== "undefined" &&
-      window.DISCIPLINE_OS_AUTH_CONFIG &&
-      typeof window.DISCIPLINE_OS_AUTH_CONFIG === "object"
-        ? window.DISCIPLINE_OS_AUTH_CONFIG
-        : null;
-
-    const merged = {
-      ...FALLBACK_AUTH_CONFIG,
-      ...(fromWindow || {}),
-    };
-
-    return {
-      googleClientId: String(merged.googleClientId || "").trim(),
-      allowedEmail: String(merged.allowedEmail || "").trim().toLowerCase(),
-    };
-  }
-
-  function persistState(options = {}) {
-    saveStateLocally();
-    if (!options.skipCloud) {
-      scheduleCloudPush();
-    }
-  }
-
-  function loadPersistedState() {
-    if (typeof window === "undefined" || !window.localStorage) {
-      return null;
-    }
-
-    try {
-      const raw = window.localStorage.getItem(LOCAL_STATE_KEY);
-      if (!raw) {
-        return null;
-      }
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" ? parsed : null;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  function saveStateLocally() {
-    if (typeof window === "undefined" || !window.localStorage) {
-      return;
-    }
-
-    try {
-      window.localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(state));
-    } catch (error) {
-      // Ignore storage failures (private mode / quota).
-    }
-  }
-
-  function initializeGoogleAuth() {
-    renderAuthIndicators();
-    if (!AUTH_CONFIG.googleClientId) {
-      return;
-    }
-
-    waitForGoogleIdentity(8000).then((ready) => {
-      if (!ready || !window.google || !window.google.accounts || !window.google.accounts.id) {
-        return;
-      }
-
-      window.google.accounts.id.initialize({
-        client_id: AUTH_CONFIG.googleClientId,
-        callback: handleGoogleCredential,
-        auto_select: true,
-        itp_support: true,
-        use_fedcm_for_prompt: true,
-      });
-      renderGoogleSignInButton();
-      window.google.accounts.id.prompt();
-    });
-  }
-
-  function waitForGoogleIdentity(timeoutMs) {
-    return new Promise((resolve) => {
-      const started = Date.now();
-      const timer = window.setInterval(() => {
-        if (window.google && window.google.accounts && window.google.accounts.id) {
-          window.clearInterval(timer);
-          resolve(true);
-          return;
-        }
-        if (Date.now() - started > timeoutMs) {
-          window.clearInterval(timer);
-          resolve(false);
-        }
-      }, 120);
-    });
-  }
-
-  function renderGoogleSignInButton() {
-    if (!refs.googleSignInButton) {
-      return;
-    }
-    if (!AUTH_CONFIG.googleClientId) {
-      refs.googleSignInButton.replaceChildren();
-      return;
-    }
-    if (!window.google || !window.google.accounts || !window.google.accounts.id) {
-      return;
-    }
-    refs.googleSignInButton.replaceChildren();
-    window.google.accounts.id.renderButton(refs.googleSignInButton, {
-      theme: "outline",
-      size: "large",
-      width: 280,
-      text: "signin_with",
-    });
-  }
-
-  function handleGoogleCredential(response) {
-    const idToken = String(response?.credential || "");
-    if (!idToken) {
-      return;
-    }
-
-    const payload = decodeJwtPayload(idToken);
-    const email = String(payload?.email || "").toLowerCase();
-    if (AUTH_CONFIG.allowedEmail && email !== AUTH_CONFIG.allowedEmail) {
-      signOutGoogle();
-      updateSyncStatus("error", "Wrong Google account");
-      showToast("Please sign in with your allowed Google account.");
-      renderAll();
-      return;
-    }
-
-    state.auth.idToken = idToken;
-    state.auth.email = email;
-    state.auth.signedIn = true;
-    persistState({ skipCloud: true, silent: true });
-    renderAuthIndicators();
-
-    if (canUseCloudSync()) {
-      void bootstrapCloudSyncNow();
-    }
-  }
-
-  function signOutGoogle() {
-    state.auth.idToken = "";
-    state.auth.email = "";
-    state.auth.signedIn = false;
-    if (window.google && window.google.accounts && window.google.accounts.id) {
-      window.google.accounts.id.disableAutoSelect();
-    }
-    persistState({ skipCloud: true, silent: true });
-    renderAuthIndicators();
-    updateSyncStatus("local", "Signed out");
-    renderAll();
-  }
-
-  function renderAuthIndicators() {
-    const hadToken = Boolean(state.auth?.idToken);
-    const signedIn = Boolean(state.auth?.idToken) && !isJwtExpired(state.auth.idToken, 45);
-    if (state.auth) {
-      state.auth.signedIn = signedIn;
-      if (!signedIn) {
-        state.auth.idToken = "";
-        state.auth.email = "";
-        if (hadToken) {
-          saveStateLocally();
-        }
-      }
-    }
-    const email = signedIn ? state.auth?.email || "" : "";
-    const text = signedIn ? `Signed in${email ? `: ${email}` : ""}` : "Not signed in";
-
-    if (refs.authBadge) {
-      refs.authBadge.textContent = text;
-      refs.authBadge.className = `sync-badge ${signedIn ? "synced" : "local"}`;
-    }
-
-    if (refs.authStatusText) {
-      refs.authStatusText.textContent = AUTH_CONFIG.googleClientId
-        ? text
-        : "Missing Google Client ID in cloud-config.js";
-    }
-
-    if (refs.signOutBtn) {
-      refs.signOutBtn.disabled = !signedIn;
-    }
-  }
-
-  function setBootOverlay(isVisible, message) {
-    if (!refs.bootOverlay) {
-      return;
-    }
-
-    if (refs.bootOverlayText && message) {
-      refs.bootOverlayText.textContent = message;
-    }
-
-    refs.bootOverlay.hidden = !isVisible;
-  }
-
-  function showToast(message) {
-    refs.toast.textContent = message;
-    refs.toast.classList.add("show");
-
-    if (toastTimer) {
-      clearTimeout(toastTimer);
-    }
-
-    toastTimer = setTimeout(() => {
-      refs.toast.classList.remove("show");
-    }, 1800);
-  }
-
-  function normalizeHabitType(value) {
-    return String(value || "").toLowerCase() === HABIT_TYPE_CORNERSTONE
-      ? HABIT_TYPE_CORNERSTONE
-      : HABIT_TYPE_REGULAR;
-  }
-
-  function getHabitTypeRank(type) {
-    return normalizeHabitType(type) === HABIT_TYPE_CORNERSTONE ? 0 : 1;
-  }
-
-  function buildScheduledDaysFromTarget(targetPerWeek, type, existingDays) {
-    const habitType = normalizeHabitType(type);
-    if (habitType === HABIT_TYPE_CORNERSTONE) {
-      return [...ALL_DAYS];
-    }
-
-    const normalizedExisting = normalizeDays(existingDays);
-    if (Array.isArray(existingDays) && normalizedExisting.length) {
-      return normalizedExisting;
-    }
-
-    const target = clampNumber(Number(targetPerWeek || 3), 1, 7);
-    const patterns = {
-      1: [1],
-      2: [1, 4],
-      3: [1, 3, 5],
-      4: [1, 2, 4, 6],
-      5: [1, 2, 3, 5, 6],
-      6: [1, 2, 3, 4, 5, 6],
-      7: [...ALL_DAYS],
-    };
-    return patterns[target] ? [...patterns[target]] : [1, 3, 5];
-  }
-
-  function isJwtExpired(token, skewSeconds = 0) {
-    const payload = decodeJwtPayload(token);
-    const exp = Number(payload?.exp || 0);
-    if (!Number.isFinite(exp) || exp <= 0) {
-      return Boolean(token);
-    }
-    const now = Math.floor(Date.now() / 1000);
-    return exp <= now + Math.max(0, Number(skewSeconds) || 0);
-  }
-
-  function normalizeDays(days) {
-    if (!Array.isArray(days)) {
-      return [1, 3, 5];
-    }
-
-    const valid = Array.from(
-      new Set(
-        days
-          .map((day) => Number(day))
-          .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
-      ),
-    );
-
-    return valid.length ? valid.sort((a, b) => a - b) : [1, 3, 5];
-  }
-
-  function sanitizeHabitName(value) {
-    return String(value || "").trim().slice(0, 64);
-  }
-
-  function sanitizeHabitIcon(value) {
-    const text = String(value || "").trim();
-    if (!text) {
-      return "✅";
-    }
-    return text.slice(0, 4);
-  }
-
-  function pickHabitColor(seed) {
-    const text = String(seed || "");
-    if (!text) {
-      return HABIT_COLOR_PALETTE[0];
-    }
-
-    let hash = 0;
-    for (let i = 0; i < text.length; i += 1) {
-      hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
-    }
-    return HABIT_COLOR_PALETTE[hash % HABIT_COLOR_PALETTE.length];
-  }
-
-  function normalizeHexColor(value) {
-    if (typeof value !== "string") {
-      return "#2563d2";
-    }
-    const trimmed = value.trim();
-    if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
-      return trimmed.toLowerCase();
-    }
-    return "#2563d2";
-  }
-
-  function normalizeCloudUrl(value) {
-    const text = String(value || "").trim();
-    if (!text) {
-      return "";
-    }
-
-    try {
-      return new URL(text).toString();
-    } catch (error) {
-      return "";
-    }
-  }
-
-  function normalizeCloudUserId(value) {
-    const cleaned = String(value || "")
-      .trim()
-      .replace(/[^a-zA-Z0-9_-]/g, "")
-      .slice(0, 40);
-    return cleaned || "default";
-  }
-
-  function formatDateReadable(date) {
-    return date.toLocaleDateString(undefined, {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-
-  function formatDateWithWeekday(date) {
-    return date.toLocaleDateString(undefined, {
-      weekday: "short",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-
-  function formatDateCompact(date) {
-    return date.toLocaleDateString(undefined, {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
-  }
-
-  function formatShortDate(date) {
-    return date.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    });
-  }
-
-  function formatDateTimeReadable(date) {
-    return date.toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  }
-
-  function todayKey() {
-    return toDateKey(new Date());
-  }
-
-  function toDateKey(date) {
+// ==========================================
+// HABIT TRACKER - MAIN APPLICATION
+// ==========================================
+
+// ==========================================
+// DATA STRUCTURES & CONSTANTS
+// ==========================================
+
+const STORAGE_KEY = 'habitTracker';
+const XP_PER_COMPLETION = 10;
+const XP_PER_LEVEL = 100;
+
+const ACHIEVEMENTS = [
+    { id: 'first_habit', name: 'Getting Started', desc: 'Add your first habit', icon: '🌱', xp: 50, check: (data) => data.habits.length >= 1 },
+    { id: 'three_habits', name: 'Triple Threat', desc: 'Have 3 active habits', icon: '🎯', xp: 100, check: (data) => data.habits.length >= 3 },
+    { id: 'five_habits', name: 'High Achiever', desc: 'Have 5 active habits', icon: '⭐', xp: 150, check: (data) => data.habits.length >= 5 },
+    { id: 'first_completion', name: 'First Step', desc: 'Complete a habit', icon: '✅', xp: 25, check: (data) => getTotalCompletions(data) >= 1 },
+    { id: 'ten_completions', name: 'Momentum', desc: 'Complete 10 habits total', icon: '🚀', xp: 100, check: (data) => getTotalCompletions(data) >= 10 },
+    { id: 'fifty_completions', name: 'Unstoppable', desc: 'Complete 50 habits total', icon: '💪', xp: 200, check: (data) => getTotalCompletions(data) >= 50 },
+    { id: 'hundred_completions', name: 'Century Club', desc: 'Complete 100 habits total', icon: '💯', xp: 500, check: (data) => getTotalCompletions(data) >= 100 },
+    { id: 'streak_3', name: 'On Fire', desc: 'Reach a 3-day streak', icon: '🔥', xp: 75, check: (data) => data.stats.longestStreak >= 3 },
+    { id: 'streak_7', name: 'Week Warrior', desc: 'Reach a 7-day streak', icon: '🏆', xp: 150, check: (data) => data.stats.longestStreak >= 7 },
+    { id: 'streak_14', name: 'Two Week Champion', desc: 'Reach a 14-day streak', icon: '👑', xp: 300, check: (data) => data.stats.longestStreak >= 14 },
+    { id: 'streak_30', name: 'Monthly Master', desc: 'Reach a 30-day streak', icon: '🎖️', xp: 500, check: (data) => data.stats.longestStreak >= 30 },
+    { id: 'perfect_day', name: 'Perfect Day', desc: 'Complete all habits in a day', icon: '🌟', xp: 100, check: (data) => data.stats.perfectDays >= 1 },
+    { id: 'five_perfect', name: 'Five Star', desc: 'Have 5 perfect days', icon: '✨', xp: 250, check: (data) => data.stats.perfectDays >= 5 },
+    { id: 'level_5', name: 'Rising Star', desc: 'Reach level 5', icon: '📈', xp: 200, check: (data) => getLevel(data.stats.totalXP) >= 5 },
+    { id: 'level_10', name: 'Elite Status', desc: 'Reach level 10', icon: '🏅', xp: 500, check: (data) => getLevel(data.stats.totalXP) >= 10 },
+];
+
+const MOTIVATIONAL_MESSAGES = {
+    start: [
+        "Start strong! Complete your habits for today.",
+        "A new day, a new opportunity to be great!",
+        "Let's crush it today! 💪",
+        "Your future self will thank you.",
+        "Small steps lead to big changes."
+    ],
+    partial: [
+        "Keep going! You're making progress.",
+        "Almost there! Don't stop now.",
+        "You've got this! Push through.",
+        "Momentum is building! 🚀",
+        "Every habit counts. Keep it up!"
+    ],
+    complete: [
+        "Amazing! You completed everything! 🎉",
+        "Perfect day! You're unstoppable! 🔥",
+        "100%! That's how champions do it! 🏆",
+        "Incredible work! You're on fire!",
+        "You did it! Pure excellence! ⭐"
+    ]
+};
+
+// ==========================================
+// STATE
+// ==========================================
+
+let appData = null;
+let currentWeekOffset = 0;
+let currentMonthOffset = 0;
+let deleteHabitId = null;
+let deleteGoalId = null;
+
+// ==========================================
+// UTILITY FUNCTIONS
+// ==========================================
+
+function getDateString(date = new Date()) {
     const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-  }
+}
 
-  function fromDateKey(value) {
-    const text = String(value || "");
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-    if (!match) {
-      return null;
+function getDayOfWeek(date) {
+    return date.getDay(); // 0 = Sunday
+}
+
+function formatDate(date) {
+    return date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric'
+    });
+}
+
+function getWeekDates(weekOffset = 0) {
+    const today = new Date();
+    // Get Monday as start of week (1 = Monday)
+    let dayOfWeek = today.getDay();
+    // Convert Sunday (0) to 7 for easier Monday-based calculation
+    if (dayOfWeek === 0) dayOfWeek = 7;
+
+    const startOfWeek = new Date(today);
+    // Go back to Monday
+    startOfWeek.setDate(today.getDate() - dayOfWeek + 1 + (weekOffset * 7));
+
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+        const date = new Date(startOfWeek);
+        date.setDate(startOfWeek.getDate() + i);
+        dates.push(date);
     }
-    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-    if (!Number.isFinite(date.getTime())) {
-      return null;
+    return dates;
+}
+
+function getMonthDates(monthOffset = 0) {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth() + monthOffset;
+
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    const dates = [];
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+        dates.push(new Date(year, month, d));
     }
-    return date;
-  }
+    return dates;
+}
 
-  function startOfDay(date) {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  }
+function getMonthName(monthOffset = 0) {
+    const today = new Date();
+    const date = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
 
-  function addDays(date, amount) {
-    const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    copy.setDate(copy.getDate() + amount);
-    return copy;
-  }
+function getLevel(xp) {
+    return Math.floor(xp / XP_PER_LEVEL) + 1;
+}
 
-  function addMonths(date, amount) {
-    return new Date(date.getFullYear(), date.getMonth() + amount, 1);
-  }
+function getXPForCurrentLevel(xp) {
+    return xp % XP_PER_LEVEL;
+}
 
-  function minDate(a, b) {
-    return a.getTime() <= b.getTime() ? a : b;
-  }
+function getTotalCompletions(data) {
+    let total = 0;
+    data.habits.forEach(habit => {
+        total += Object.keys(habit.completions).length;
+    });
+    return total;
+}
 
-  function startOfWeek(date, weekStartsOn) {
-    const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const diff = (copy.getDay() - weekStartsOn + 7) % 7;
-    copy.setDate(copy.getDate() - diff);
-    return copy;
-  }
+function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
 
-  function startOfMonth(date) {
-    return new Date(date.getFullYear(), date.getMonth(), 1);
-  }
-
-  function isCompactViewport() {
-    return typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches;
-  }
-
-  function clampNumber(value, min, max) {
-    if (!Number.isFinite(value)) {
-      return min;
+function shouldShowHabitOnDay(habit, dayOfWeek) {
+    switch (habit.frequency) {
+        case 'daily':
+            return true;
+        case 'weekdays':
+            return dayOfWeek >= 1 && dayOfWeek <= 5;
+        case 'weekends':
+            return dayOfWeek === 0 || dayOfWeek === 6;
+        case 'custom':
+            return habit.customDays.includes(dayOfWeek);
+        default:
+            return true;
     }
-    return Math.min(max, Math.max(min, value));
-  }
+}
 
-  function escapeHtml(value) {
-    const map = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
+// ==========================================
+// DATA MANAGEMENT
+// ==========================================
+
+function getDefaultData() {
+    return {
+        habits: [
+            {
+                id: generateId(),
+                name: 'Running',
+                emoji: '🏃',
+                color: '#10b981',
+                frequency: 'daily',
+                customDays: [],
+                completions: {},
+                createdAt: getDateString()
+            },
+            {
+                id: generateId(),
+                name: 'Reading',
+                emoji: '📚',
+                color: '#3b82f6',
+                frequency: 'daily',
+                customDays: [],
+                completions: {},
+                createdAt: getDateString()
+            },
+            {
+                id: generateId(),
+                name: 'Meditation',
+                emoji: '🧘',
+                color: '#8b5cf6',
+                frequency: 'daily',
+                customDays: [],
+                completions: {},
+                createdAt: getDateString()
+            }
+        ],
+        stats: {
+            currentStreak: 0,
+            longestStreak: 0,
+            totalXP: 0,
+            perfectDays: 0,
+            completionsByDay: [0, 0, 0, 0, 0, 0, 0]
+        },
+        achievements: [],
+        dailyGoals: [],
+        settings: {
+            createdAt: getDateString()
+        }
     };
-    return String(value).replace(/[&<>"']/g, (ch) => map[ch]);
-  }
+}
 
-  function escapeHtmlAttr(value) {
-    return escapeHtml(value);
-  }
-
-  function byId(id) {
-    return document.getElementById(id);
-  }
-
-  function cloneData(value) {
-    if (typeof structuredClone === "function") {
-      return structuredClone(value);
-    }
-    return JSON.parse(JSON.stringify(value));
-  }
-
-  function generateId() {
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-      return crypto.randomUUID();
-    }
-    return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  }
-
-  function decodeJwtPayload(token) {
+function loadData() {
     try {
-      const parts = String(token || "").split(".");
-      if (parts.length < 2) {
-        return null;
-      }
-      const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-      const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
-      const json = atob(padded);
-      return JSON.parse(json);
-    } catch (error) {
-      return null;
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+            appData = JSON.parse(stored);
+            // Ensure all required properties exist
+            if (!appData.stats) appData.stats = getDefaultData().stats;
+            if (!appData.achievements) appData.achievements = [];
+            if (!appData.dailyGoals) appData.dailyGoals = [];
+            if (!appData.settings) appData.settings = getDefaultData().settings;
+        } else {
+            appData = getDefaultData();
+            saveData();
+        }
+    } catch (e) {
+        console.error('Failed to load data:', e);
+        appData = getDefaultData();
     }
-  }
+}
 
-  function getErrorMessage(error) {
-    if (error instanceof Error) {
-      return error.message;
+function saveData() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+    } catch (e) {
+        console.error('Failed to save data:', e);
+        showToast('Failed to save data', 'error');
     }
-    return String(error || "Unknown error");
-  }
-})();
+}
+
+// ==========================================
+// HABIT OPERATIONS
+// ==========================================
+
+function addHabit(name, emoji, color, frequency, customDays = []) {
+    const habit = {
+        id: generateId(),
+        name: name.trim(),
+        emoji,
+        color,
+        frequency,
+        customDays,
+        completions: {},
+        createdAt: getDateString()
+    };
+
+    appData.habits.push(habit);
+    saveData();
+    checkAchievements();
+    renderAll();
+    showToast(`${emoji} ${name} added!`, 'success');
+}
+
+function deleteHabit(habitId) {
+    const habitIndex = appData.habits.findIndex(h => h.id === habitId);
+    if (habitIndex !== -1) {
+        const habit = appData.habits[habitIndex];
+        appData.habits.splice(habitIndex, 1);
+        saveData();
+        renderAll();
+        showToast(`${habit.emoji} ${habit.name} deleted`, 'success');
+    }
+}
+
+function toggleHabitCompletion(habitId, dateString = getDateString()) {
+    const habit = appData.habits.find(h => h.id === habitId);
+    if (!habit) return;
+
+    const wasCompleted = habit.completions[dateString];
+
+    if (wasCompleted) {
+        delete habit.completions[dateString];
+        appData.stats.totalXP = Math.max(0, appData.stats.totalXP - XP_PER_COMPLETION);
+    } else {
+        habit.completions[dateString] = true;
+        appData.stats.totalXP += XP_PER_COMPLETION;
+        showToast(`+${XP_PER_COMPLETION} XP`, 'xp');
+
+        // Track completion by day of week
+        const date = new Date(dateString);
+        const dayOfWeek = date.getDay();
+        appData.stats.completionsByDay[dayOfWeek]++;
+    }
+
+    updateStreaks();
+    saveData();
+    checkAchievements();
+    renderAll();
+
+    // Check for perfect day celebration
+    if (!wasCompleted && checkPerfectDay()) {
+        appData.stats.perfectDays++;
+        saveData();
+        checkAchievements();
+        showCelebration();
+    }
+}
+
+function checkPerfectDay(dateString = getDateString()) {
+    const date = new Date(dateString);
+    const dayOfWeek = getDayOfWeek(date);
+
+    const habitsForToday = appData.habits.filter(h => shouldShowHabitOnDay(h, dayOfWeek));
+    if (habitsForToday.length === 0) return false;
+
+    return habitsForToday.every(h => h.completions[dateString]);
+}
+
+function updateStreaks() {
+    const today = new Date();
+    let streak = 0;
+    let checkDate = new Date(today);
+
+    // Check today first
+    const todayStr = getDateString(today);
+    const todayDayOfWeek = getDayOfWeek(today);
+    const habitsForToday = appData.habits.filter(h => shouldShowHabitOnDay(h, todayDayOfWeek));
+
+    // If there are habits for today, check if at least one is completed
+    // Otherwise, we need to check backwards
+    let startFromYesterday = false;
+    if (habitsForToday.length > 0) {
+        const anyCompletedToday = habitsForToday.some(h => h.completions[todayStr]);
+        if (!anyCompletedToday) {
+            startFromYesterday = true;
+        }
+    }
+
+    if (startFromYesterday) {
+        checkDate.setDate(checkDate.getDate() - 1);
+    }
+
+    // Count consecutive days with at least one completion
+    while (true) {
+        const dateStr = getDateString(checkDate);
+        const dayOfWeek = getDayOfWeek(checkDate);
+        const habitsForDay = appData.habits.filter(h => shouldShowHabitOnDay(h, dayOfWeek));
+
+        if (habitsForDay.length === 0) {
+            // No habits scheduled for this day, skip it
+            checkDate.setDate(checkDate.getDate() - 1);
+            continue;
+        }
+
+        const anyCompleted = habitsForDay.some(h => h.completions[dateStr]);
+        if (anyCompleted) {
+            streak++;
+            checkDate.setDate(checkDate.getDate() - 1);
+
+            // Safety limit
+            if (streak > 1000) break;
+        } else {
+            break;
+        }
+    }
+
+    appData.stats.currentStreak = streak;
+    if (streak > appData.stats.longestStreak) {
+        appData.stats.longestStreak = streak;
+    }
+}
+
+// ==========================================
+// ACHIEVEMENTS
+// ==========================================
+
+function checkAchievements() {
+    let newAchievements = [];
+
+    ACHIEVEMENTS.forEach(achievement => {
+        if (!appData.achievements.includes(achievement.id) && achievement.check(appData)) {
+            appData.achievements.push(achievement.id);
+            appData.stats.totalXP += achievement.xp;
+            newAchievements.push(achievement);
+        }
+    });
+
+    if (newAchievements.length > 0) {
+        saveData();
+        newAchievements.forEach(a => {
+            setTimeout(() => {
+                showToast(`🏆 Achievement: ${a.name} (+${a.xp} XP)`, 'success');
+            }, 500);
+        });
+    }
+}
+
+// ==========================================
+// RENDERING
+// ==========================================
+
+function renderAll() {
+    renderHeader();
+    renderTodayView();
+    renderDailyGoals();
+    renderWeekView();
+    renderWeekLineChart();
+    // renderWeeklyPlanner(); // Removed to eliminate scrolling in Week view
+    renderMonthView();
+    renderStatsView();
+    renderAchievementsView();
+}
+
+function renderHeader() {
+    // Date display
+    document.getElementById('currentDate').textContent = formatDate(new Date());
+
+    // Level badge
+    const level = getLevel(appData.stats.totalXP);
+    document.getElementById('levelBadge').innerHTML = `
+        <span class="level-icon">⚡</span>
+        <span class="level-text">Lv. ${level}</span>
+    `;
+
+    // Stats bar
+    const todayProgress = calculateTodayProgress();
+    const weekProgress = calculateWeekProgress();
+
+    document.getElementById('todayProgress').textContent = `${todayProgress}%`;
+    document.getElementById('weekProgress').textContent = `${weekProgress}%`;
+    document.getElementById('currentStreak').textContent = appData.stats.currentStreak;
+    document.getElementById('totalXP').textContent = appData.stats.totalXP;
+}
+
+function calculateTodayProgress() {
+    const today = getDateString();
+    const dayOfWeek = getDayOfWeek(new Date());
+    const habitsForToday = appData.habits.filter(h => shouldShowHabitOnDay(h, dayOfWeek));
+
+    if (habitsForToday.length === 0) return 100;
+
+    const completed = habitsForToday.filter(h => h.completions[today]).length;
+    return Math.round((completed / habitsForToday.length) * 100);
+}
+
+function calculateWeekProgress() {
+    const weekDates = getWeekDates(0);
+    const today = new Date();
+    let totalHabits = 0;
+    let completedHabits = 0;
+
+    weekDates.forEach(date => {
+        if (date > today) return; // Don't count future days
+
+        const dateStr = getDateString(date);
+        const dayOfWeek = getDayOfWeek(date);
+
+        appData.habits.forEach(habit => {
+            if (shouldShowHabitOnDay(habit, dayOfWeek)) {
+                totalHabits++;
+                if (habit.completions[dateStr]) {
+                    completedHabits++;
+                }
+            }
+        });
+    });
+
+    if (totalHabits === 0) return 100;
+    return Math.round((completedHabits / totalHabits) * 100);
+}
+
+function renderTodayView() {
+    const today = getDateString();
+    const dayOfWeek = getDayOfWeek(new Date());
+    const habitsForToday = appData.habits.filter(h => shouldShowHabitOnDay(h, dayOfWeek));
+
+    // Progress ring
+    const progress = calculateTodayProgress();
+    const circumference = 2 * Math.PI * 52;
+    const offset = circumference - (progress / 100) * circumference;
+
+    document.getElementById('todayRing').style.strokeDashoffset = offset;
+    document.getElementById('todayPercent').textContent = `${progress}%`;
+
+    // Motivation text
+    let messages;
+    if (progress === 0) {
+        messages = MOTIVATIONAL_MESSAGES.start;
+    } else if (progress < 100) {
+        messages = MOTIVATIONAL_MESSAGES.partial;
+    } else {
+        messages = MOTIVATIONAL_MESSAGES.complete;
+    }
+    document.getElementById('motivationText').textContent =
+        messages[Math.floor(Math.random() * messages.length)];
+
+    // Habits list
+    const habitsList = document.getElementById('habitsList');
+
+    if (appData.habits.length === 0) {
+        habitsList.innerHTML = `
+            <div class="empty-state">
+                <p>No habits yet. Add your first habit to get started!</p>
+            </div>
+        `;
+        return;
+    }
+
+    habitsList.innerHTML = appData.habits.map(habit => {
+        const isCompleted = habit.completions[today];
+        const isForToday = shouldShowHabitOnDay(habit, dayOfWeek);
+        const habitStreak = calculateHabitStreak(habit);
+
+        return `
+            <div class="habit-item ${isCompleted ? 'completed' : ''} ${!isForToday ? 'dimmed' : ''}" 
+                 style="--habit-color: ${habit.color}"
+                 data-habit-id="${habit.id}">
+                <div class="habit-checkbox"></div>
+                <div class="habit-info">
+                    <div class="habit-name">
+                        <span class="habit-emoji">${habit.emoji}</span>
+                        ${habit.name}
+                    </div>
+                    ${habitStreak > 0 ? `<div class="habit-streak">${habitStreak} 🔥 streak</div>` : ''}
+                </div>
+                <div class="habit-actions">
+                    <button class="habit-action-btn delete" data-delete-id="${habit.id}" title="Delete">
+                        🗑️
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // Add click handlers
+    habitsList.querySelectorAll('.habit-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            if (e.target.closest('.habit-action-btn')) return;
+            const habitId = item.dataset.habitId;
+            toggleHabitCompletion(habitId);
+        });
+    });
+
+    habitsList.querySelectorAll('.habit-action-btn.delete').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const habitId = btn.dataset.deleteId;
+            showDeleteModal(habitId);
+        });
+    });
+}
+
+function calculateHabitStreak(habit) {
+    let streak = 0;
+    const today = new Date();
+    let checkDate = new Date(today);
+
+    while (true) {
+        const dateStr = getDateString(checkDate);
+        const dayOfWeek = getDayOfWeek(checkDate);
+
+        if (!shouldShowHabitOnDay(habit, dayOfWeek)) {
+            checkDate.setDate(checkDate.getDate() - 1);
+            continue;
+        }
+
+        if (habit.completions[dateStr]) {
+            streak++;
+            checkDate.setDate(checkDate.getDate() - 1);
+            if (streak > 1000) break;
+        } else {
+            // If it's today and not completed yet, check yesterday
+            if (dateStr === getDateString(today)) {
+                checkDate.setDate(checkDate.getDate() - 1);
+                continue;
+            }
+            break;
+        }
+    }
+
+    return streak;
+}
+
+// Render Week View (Matrix Grid)
+function renderWeekView() {
+    renderWeekGrid();
+}
+
+
+// ==========================================
+// DAILY GOALS
+// ==========================================
+
+function addDailyGoal(text, date) {
+    const goal = {
+        id: generateId(),
+        text: text.trim(),
+        date: date,
+        completed: false,
+        createdAt: getDateString()
+    };
+
+    appData.dailyGoals.push(goal);
+    saveData();
+    renderDailyGoals();
+    showToast('Goal added!', 'success');
+}
+
+function toggleGoalCompletion(goalId) {
+    const goal = appData.dailyGoals.find(g => g.id === goalId);
+    if (!goal) return;
+
+    goal.completed = !goal.completed;
+
+    if (goal.completed) {
+        appData.stats.totalXP += 5;
+        showToast('+5 XP', 'xp');
+    } else {
+        appData.stats.totalXP = Math.max(0, appData.stats.totalXP - 5);
+    }
+
+    saveData();
+    renderAll();
+}
+
+function deleteGoal(goalId) {
+    const goalIndex = appData.dailyGoals.findIndex(g => g.id === goalId);
+    if (goalIndex !== -1) {
+        appData.dailyGoals.splice(goalIndex, 1);
+        saveData();
+        renderDailyGoals();
+        showToast('Goal deleted', 'success');
+    }
+}
+
+function renderDailyGoals() {
+    const today = getDateString();
+    const todayGoals = appData.dailyGoals.filter(g => g.date === today);
+
+    const goalsList = document.getElementById('dailyGoalsList');
+    const goalsCount = document.getElementById('goalsCount');
+
+    const completedCount = todayGoals.filter(g => g.completed).length;
+    goalsCount.textContent = `${completedCount}/${todayGoals.length}`;
+
+    if (todayGoals.length === 0) {
+        goalsList.innerHTML = '<div class="empty-goals">No goals for today. Add one!</div>';
+        return;
+    }
+
+    goalsList.innerHTML = todayGoals.map(goal => `
+        <div class="goal-item ${goal.completed ? 'completed' : ''}" data-goal-id="${goal.id}">
+            <div class="goal-checkbox"></div>
+            <span class="goal-text">${goal.text}</span>
+            <button class="goal-delete" data-delete-goal="${goal.id}">🗑️</button>
+        </div>
+    `).join('');
+
+    // Add click handlers
+    goalsList.querySelectorAll('.goal-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            if (e.target.closest('.goal-delete')) return;
+            toggleGoalCompletion(item.dataset.goalId);
+        });
+    });
+
+    goalsList.querySelectorAll('.goal-delete').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteGoal(btn.dataset.deleteGoal);
+        });
+    });
+}
+
+// ==========================================
+// LINE CHART
+// ==========================================
+
+function calculateDayCompletion(dateStr) {
+    const date = new Date(dateStr);
+    const dayOfWeek = getDayOfWeek(date);
+
+    const habitsForDay = appData.habits.filter(h => shouldShowHabitOnDay(h, dayOfWeek));
+    if (habitsForDay.length === 0) return 100;
+
+    const completed = habitsForDay.filter(h => h.completions[dateStr]).length;
+    return Math.round((completed / habitsForDay.length) * 100);
+}
+
+function renderWeekLineChart() {
+    const weekDates = getWeekDates(currentWeekOffset);
+    const today = new Date();
+    const chartContainer = document.getElementById('weekLineChart');
+
+    if (!chartContainer) return;
+
+    const dayNames = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+    let chartHTML = '';
+    weekDates.forEach((date, i) => {
+        const dateStr = getDateString(date);
+        const isFuture = date > today;
+        const completion = isFuture ? 0 : calculateDayCompletion(dateStr);
+        const height = Math.max(4, completion);
+
+        chartHTML += `
+            <div class="chart-bar ${completion === 0 ? 'zero' : ''}" 
+                 style="height: ${height}%" 
+                 data-value="${completion}%"
+                 title="${date.toLocaleDateString()}: ${completion}%">
+            </div>
+        `;
+    });
+
+    chartHTML += `
+        <div class="chart-labels">
+            ${dayNames.map(d => `<span class="chart-day-label">${d}</span>`).join('')}
+        </div>
+    `;
+
+    chartContainer.innerHTML = chartHTML;
+}
+
+// ==========================================
+// MONTH VIEW
+// ==========================================
+
+function renderMonthView() {
+    const monthDates = getMonthDates(currentMonthOffset);
+    const today = new Date();
+    const todayStr = getDateString(today);
+
+    // Month label
+    document.getElementById('monthLabel').textContent = getMonthName(currentMonthOffset);
+
+    // Month stats
+    let totalScheduled = 0;
+    let totalCompleted = 0;
+
+    monthDates.forEach(date => {
+        if (date > today) return;
+        const dateStr = getDateString(date);
+        const dayOfWeek = getDayOfWeek(date);
+
+        appData.habits.forEach(habit => {
+            if (shouldShowHabitOnDay(habit, dayOfWeek)) {
+                totalScheduled++;
+                if (habit.completions[dateStr]) {
+                    totalCompleted++;
+                }
+            }
+        });
+    });
+
+    const monthCompletion = totalScheduled > 0 ? Math.round((totalCompleted / totalScheduled) * 100) : 0;
+
+    document.getElementById('monthCompletion').textContent = `${monthCompletion}%`;
+    document.getElementById('monthCompleted').textContent = totalCompleted;
+    document.getElementById('monthTotal').textContent = totalScheduled;
+
+    // Month line chart
+    renderMonthLineChart(monthDates, today);
+
+    // Month grid
+    const monthGrid = document.getElementById('monthGrid');
+    const daysInMonth = monthDates.length;
+
+    let gridHTML = `
+        <div class="month-header">
+            <div class="month-day-header"></div>
+            ${monthDates.map(date => {
+        const isToday = getDateString(date) === todayStr;
+        return `<div class="month-day-header ${isToday ? 'today' : ''}">${date.getDate()}</div>`;
+    }).join('')}
+        </div>
+    `;
+
+    appData.habits.forEach(habit => {
+        gridHTML += `
+            <div class="month-habit-row">
+                <div class="month-habit-name">
+                    <span class="month-habit-emoji">${habit.emoji}</span>
+                    ${habit.name.substring(0, 5)}
+                </div>
+                ${monthDates.map(date => {
+            const dateStr = getDateString(date);
+            const isCompleted = habit.completions[dateStr];
+            const isFuture = date > today;
+            const isToday = dateStr === todayStr;
+            const dayOfWeek = getDayOfWeek(date);
+
+            return `
+                        <div class="month-cell ${isCompleted ? 'completed' : ''} ${isFuture ? 'future' : ''} ${isToday ? 'today' : ''}"
+                             style="--habit-color: ${habit.color}"
+                             data-habit-id="${habit.id}"
+                             data-date="${dateStr}">
+                        </div>
+                    `;
+        }).join('')}
+            </div>
+        `;
+    });
+
+    monthGrid.innerHTML = gridHTML;
+}
+
+
+
+function renderMonthView() {
+    const today = new Date();
+    const todayStr = getDateString(today);
+
+    // Update Month Label
+    document.getElementById('monthLabel').textContent = getMonthName(currentMonthOffset);
+
+    // 7-Column Calendar Layout
+    const monthDates = getMonthDates(currentMonthOffset);
+    const firstDay = monthDates[0];
+
+    // ISO Week: Monday = 1, Sunday = 7
+    let startDay = firstDay.getDay();
+    if (startDay === 0) startDay = 7; // Convert Sunday 0 to 7
+
+    // Pad empty cells before first day (startDay - 1 blanks)
+    const blanks = startDay - 1;
+
+    const monthGrid = document.getElementById('monthGrid');
+
+    // Headers (Mo Tu We Th Fr Sa Su)
+    const days = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+    let gridHTML = `
+        <div class="calendar-header-row">
+            ${days.map(d => `<div class="calendar-header">${d}</div>`).join('')}
+        </div>
+        <div class="calendar-body">
+    `;
+
+    // Blank cells
+    for (let i = 0; i < blanks; i++) {
+        gridHTML += `<div class="calendar-cell empty"></div>`;
+    }
+
+    // Content cells
+    monthDates.forEach(date => {
+        const dateStr = getDateString(date);
+        const isToday = dateStr === todayStr;
+        const completion = calculateDayCompletion(dateStr);
+        const dayNum = date.getDate();
+
+        // Color intensity based on completion
+        // 0% -> bg-secondary
+        // 100% -> primary
+        const opacity = Math.max(0.1, completion / 100);
+        const bgStyle = completion > 0
+            ? `style="background: rgba(16, 185, 129, ${opacity}); color: ${completion > 50 ? '#fff' : 'var(--text-primary)'}"`
+            : '';
+
+        gridHTML += `
+            <div class="calendar-cell ${isToday ? 'today' : ''}" ${bgStyle}>
+                <span class="calendar-date">${dayNum}</span>
+            </div>
+        `;
+    });
+
+    gridHTML += `</div>`; // Close body
+
+    monthGrid.innerHTML = gridHTML;
+
+    // Update Monthly Stats
+    // ... (Calculate stats logic)
+    let totalScheduled = 0;
+    let totalCompleted = 0;
+
+    monthDates.forEach(date => {
+        if (date > today) return;
+        const dateStr = getDateString(date);
+        const dayOfWeek = getDayOfWeek(date);
+
+        appData.habits.forEach(habit => {
+            if (shouldShowHabitOnDay(habit, dayOfWeek)) {
+                totalScheduled++;
+                if (habit.completions[dateStr]) totalCompleted++;
+            }
+        });
+    });
+
+    const monthCompletion = totalScheduled > 0 ? Math.round((totalCompleted / totalScheduled) * 100) : 0;
+    document.getElementById('monthCompletion').textContent = `${monthCompletion}%`;
+    document.getElementById('monthCompleted').textContent = totalCompleted;
+    document.getElementById('monthTotal').textContent = totalScheduled;
+
+    renderMonthLineChart(monthDates, today);
+}
+
+function renderMonthLineChart(monthDates, today) {
+    const chartContainer = document.getElementById('monthLineChart');
+    if (!chartContainer) return;
+
+    let chartHTML = '';
+    monthDates.forEach((date, i) => {
+        const dateStr = getDateString(date);
+        const isFuture = date > today;
+        const completion = isFuture ? 0 : calculateDayCompletion(dateStr);
+        const height = Math.max(2, completion);
+
+        chartHTML += `
+            <div class="chart-bar ${completion === 0 ? 'zero' : ''}" 
+                 style="height: ${height}%; min-width: 6px; max-width: 12px;" 
+                 data-value="${completion}%"
+                 title="${date.getDate()}: ${completion}%">
+            </div>
+        `;
+    });
+
+    chartContainer.innerHTML = chartHTML;
+}
+
+function renderStatsView() {
+    // Overall completion
+    const totalCompletions = getTotalCompletions(appData);
+    const totalPossible = calculateTotalPossibleCompletions();
+    const overallRate = totalPossible > 0 ? Math.round((totalCompletions / totalPossible) * 100) : 0;
+
+    document.getElementById('overallCompletion').textContent = `${overallRate}%`;
+    document.getElementById('currentStreakStat').textContent = appData.stats.currentStreak;
+    document.getElementById('longestStreak').textContent = appData.stats.longestStreak;
+
+    // Habit performance
+    const performanceList = document.getElementById('habitPerformance');
+    performanceList.innerHTML = appData.habits.map(habit => {
+        const completionCount = Object.keys(habit.completions).length;
+        const possibleDays = calculatePossibleDaysForHabit(habit);
+        const rate = possibleDays > 0 ? Math.round((completionCount / possibleDays) * 100) : 0;
+
+        return `
+            <div class="performance-item">
+                <span class="performance-emoji">${habit.emoji}</span>
+                <div class="performance-info">
+                    <div class="performance-name">${habit.name}</div>
+                    <div class="performance-bar">
+                        <div class="performance-fill" style="width: ${rate}%; background: ${habit.color}"></div>
+                    </div>
+                </div>
+                <span class="performance-percent">${rate}%</span>
+            </div>
+        `;
+    }).join('') || '<p style="color: var(--text-muted); text-align: center;">No habits yet</p>';
+
+    // Best days
+    const bestDays = document.getElementById('bestDays');
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const maxCompletions = Math.max(...appData.stats.completionsByDay, 1);
+
+    bestDays.innerHTML = dayNames.map((name, i) => {
+        const count = appData.stats.completionsByDay[i];
+        const intensity = count / maxCompletions;
+        const color = `rgba(16, 185, 129, ${0.2 + intensity * 0.8})`;
+
+        return `
+            <div class="best-day-item" style="background: ${color}">
+                <div class="best-day-name">${name}</div>
+                <div class="best-day-value" style="color: ${intensity > 0.5 ? 'white' : 'var(--text-secondary)'}">${count}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function calculateTotalPossibleCompletions() {
+    let total = 0;
+    const today = new Date();
+
+    appData.habits.forEach(habit => {
+        const createdDate = new Date(habit.createdAt);
+        let checkDate = new Date(createdDate);
+
+        while (checkDate <= today) {
+            if (shouldShowHabitOnDay(habit, getDayOfWeek(checkDate))) {
+                total++;
+            }
+            checkDate.setDate(checkDate.getDate() + 1);
+        }
+    });
+
+    return total;
+}
+
+function calculatePossibleDaysForHabit(habit) {
+    let total = 0;
+    const today = new Date();
+    const createdDate = new Date(habit.createdAt);
+    let checkDate = new Date(createdDate);
+
+    while (checkDate <= today) {
+        if (shouldShowHabitOnDay(habit, getDayOfWeek(checkDate))) {
+            total++;
+        }
+        checkDate.setDate(checkDate.getDate() + 1);
+    }
+
+    return total;
+}
+
+function renderAchievementsView() {
+    // XP and Level
+    const xp = appData.stats.totalXP;
+    const level = getLevel(xp);
+    const xpInLevel = getXPForCurrentLevel(xp);
+
+    document.getElementById('totalXPDisplay').textContent = `${xp} XP`;
+    document.getElementById('currentLevel').textContent = `Level ${level}`;
+    document.getElementById('nextLevel').textContent = `Level ${level + 1}`;
+    document.getElementById('levelFill').style.width = `${(xpInLevel / XP_PER_LEVEL) * 100}%`;
+    document.getElementById('xpToNext').textContent = `${xpInLevel} / ${XP_PER_LEVEL} XP`;
+
+    // Achievements grid
+    const grid = document.getElementById('achievementsGrid');
+    grid.innerHTML = ACHIEVEMENTS.map(achievement => {
+        const unlocked = appData.achievements.includes(achievement.id);
+
+        return `
+            <div class="achievement-card ${unlocked ? 'unlocked' : 'locked'}">
+                <div class="achievement-icon">${achievement.icon}</div>
+                <div class="achievement-name">${achievement.name}</div>
+                <div class="achievement-desc">${achievement.desc}</div>
+                <div class="achievement-xp">+${achievement.xp} XP</div>
+            </div>
+        `;
+    }).join('');
+}
+
+// ==========================================
+// MODALS
+// ==========================================
+
+function showAddHabitModal() {
+    document.getElementById('addHabitModal').classList.add('active');
+    document.getElementById('habitName').value = '';
+    document.getElementById('habitName').focus();
+
+    // Reset selections
+    document.querySelectorAll('.emoji-btn').forEach(btn => btn.classList.remove('selected'));
+    document.querySelector('.emoji-btn').classList.add('selected');
+
+    document.querySelectorAll('.color-btn').forEach(btn => btn.classList.remove('selected'));
+    document.querySelector('.color-btn').classList.add('selected');
+
+    document.querySelectorAll('.freq-btn').forEach(btn => btn.classList.remove('selected'));
+    document.querySelector('.freq-btn[data-freq="daily"]').classList.add('selected');
+
+    document.querySelectorAll('.day-btn').forEach(btn => btn.classList.remove('selected'));
+    document.getElementById('customDays').classList.add('hidden');
+}
+
+function hideAddHabitModal() {
+    document.getElementById('addHabitModal').classList.remove('active');
+}
+
+function showDeleteModal(habitId) {
+    deleteHabitId = habitId;
+    const habit = appData.habits.find(h => h.id === habitId);
+    if (!habit) return;
+
+    document.getElementById('deleteHabitName').textContent = `${habit.emoji} ${habit.name}`;
+    document.getElementById('deleteModal').classList.add('active');
+}
+
+function hideDeleteModal() {
+    document.getElementById('deleteModal').classList.remove('active');
+    deleteHabitId = null;
+}
+
+function showSettingsModal() {
+    document.getElementById('settingsModal').classList.add('active');
+}
+
+function hideSettingsModal() {
+    document.getElementById('settingsModal').classList.remove('active');
+}
+
+function showAddGoalModal() {
+    document.getElementById('addGoalModal').classList.add('active');
+    document.getElementById('goalText').value = '';
+    document.getElementById('goalDate').value = getDateString();
+    document.getElementById('goalText').focus();
+}
+
+function hideAddGoalModal() {
+    document.getElementById('addGoalModal').classList.remove('active');
+}
+
+// ==========================================
+// CELEBRATIONS & TOASTS
+// ==========================================
+
+function showCelebration() {
+    const overlay = document.getElementById('celebrationOverlay');
+    overlay.classList.remove('hidden');
+
+    // Create confetti
+    createConfetti();
+
+    setTimeout(() => {
+        overlay.classList.add('hidden');
+    }, 2500);
+}
+
+function createConfetti() {
+    const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6'];
+
+    for (let i = 0; i < 50; i++) {
+        const confetti = document.createElement('div');
+        confetti.className = 'confetti';
+        confetti.style.left = Math.random() * 100 + 'vw';
+        confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.animationDuration = (Math.random() * 2 + 1) + 's';
+        confetti.style.animationDelay = Math.random() * 0.5 + 's';
+
+        document.body.appendChild(confetti);
+
+        // Animate falling
+        confetti.animate([
+            { transform: 'translateY(-10vh) rotate(0deg)', opacity: 1 },
+            { transform: `translateY(100vh) rotate(${Math.random() * 720}deg)`, opacity: 0 }
+        ], {
+            duration: 2000 + Math.random() * 1000,
+            easing: 'cubic-bezier(.25,.46,.45,.94)'
+        }).onfinish = () => confetti.remove();
+    }
+}
+
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+
+    const icons = {
+        success: '✓',
+        error: '✕',
+        xp: '⚡'
+    };
+
+    toast.innerHTML = `
+        <span class="toast-icon">${icons[type] || '✓'}</span>
+        <span class="toast-message">${message}</span>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('toast-out');
+        setTimeout(() => toast.remove(), 300);
+    }, 2500);
+}
+
+// ==========================================
+// DATA IMPORT/EXPORT
+// ==========================================
+
+function exportData() {
+    const dataStr = JSON.stringify(appData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `habit-tracker-backup-${getDateString()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast('Data exported successfully!', 'success');
+}
+
+function importData(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const importedData = JSON.parse(e.target.result);
+
+            // Validate structure
+            if (!importedData.habits || !Array.isArray(importedData.habits)) {
+                throw new Error('Invalid data format');
+            }
+
+            appData = importedData;
+            saveData();
+            renderAll();
+            showToast('Data imported successfully!', 'success');
+            hideSettingsModal();
+        } catch (err) {
+            showToast('Failed to import data', 'error');
+        }
+    };
+    reader.readAsText(file);
+}
+
+function resetData() {
+    if (confirm('Are you sure you want to reset ALL data? This cannot be undone.')) {
+        appData = getDefaultData();
+        saveData();
+        renderAll();
+        showToast('All data has been reset', 'success');
+        hideSettingsModal();
+    }
+}
+
+// ==========================================
+// EVENT LISTENERS
+// ==========================================
+
+function initEventListeners() {
+    // Tab navigation
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.dataset.tab + 'Tab';
+
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+
+            // Layout adjustments via CSS class
+            const tab = btn.dataset.tab;
+            document.body.classList.toggle('week-view-active', tab === 'week');
+
+            // Optimization: Only render the current tab
+            if (tab === 'today') {
+                renderHeader();
+                renderTodayView();
+                renderDailyGoals();
+            } else if (tab === 'week') {
+                renderWeekView();
+            } else if (tab === 'month') {
+                renderMonthView();
+            } else if (tab === 'stats') {
+                renderStatsView();
+            } else if (tab === 'achievements') {
+                renderAchievementsView();
+            }
+        });
+    });
+
+    // Week navigation
+    document.getElementById('prevWeek').addEventListener('click', () => {
+        currentWeekOffset--;
+        renderWeekView();
+        renderWeekLineChart();
+    });
+
+    document.getElementById('nextWeek').addEventListener('click', () => {
+        if (currentWeekOffset < 0) {
+            currentWeekOffset++;
+            renderWeekView();
+            renderWeekLineChart();
+        }
+    });
+
+    // Month navigation
+    document.getElementById('prevMonth').addEventListener('click', () => {
+        currentMonthOffset--;
+        renderMonthView();
+    });
+
+    document.getElementById('nextMonth').addEventListener('click', () => {
+        if (currentMonthOffset < 0) {
+            currentMonthOffset++;
+            renderMonthView();
+        }
+    });
+
+    // Daily goals modal
+    document.getElementById('addGoalBtn').addEventListener('click', showAddGoalModal);
+    document.getElementById('closeGoalModal').addEventListener('click', hideAddGoalModal);
+    document.getElementById('cancelAddGoal').addEventListener('click', hideAddGoalModal);
+    document.getElementById('confirmAddGoal').addEventListener('click', () => {
+        const text = document.getElementById('goalText').value.trim();
+        const date = document.getElementById('goalDate').value;
+
+        if (!text) {
+            showToast('Please enter a goal', 'error');
+            return;
+        }
+
+        if (!date) {
+            showToast('Please select a date', 'error');
+            return;
+        }
+
+        addDailyGoal(text, date);
+        hideAddGoalModal();
+    });
+
+    // Add habit modal
+    document.getElementById('addHabitBtn').addEventListener('click', showAddHabitModal);
+    document.getElementById('closeAddModal').addEventListener('click', hideAddHabitModal);
+    document.getElementById('cancelAddHabit').addEventListener('click', hideAddHabitModal);
+
+    // Emoji picker
+    document.getElementById('emojiPicker').addEventListener('click', (e) => {
+        if (e.target.classList.contains('emoji-btn')) {
+            document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+            e.target.classList.add('selected');
+        }
+    });
+
+    // Color picker
+    document.getElementById('colorPicker').addEventListener('click', (e) => {
+        if (e.target.classList.contains('color-btn')) {
+            document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('selected'));
+            e.target.classList.add('selected');
+        }
+    });
+
+    // Frequency picker
+    document.getElementById('frequencyPicker').addEventListener('click', (e) => {
+        if (e.target.classList.contains('freq-btn')) {
+            document.querySelectorAll('.freq-btn').forEach(b => b.classList.remove('selected'));
+            e.target.classList.add('selected');
+
+            const freq = e.target.dataset.freq;
+            document.getElementById('customDays').classList.toggle('hidden', freq !== 'custom');
+        }
+    });
+
+    // Custom days
+    document.getElementById('customDays').addEventListener('click', (e) => {
+        if (e.target.classList.contains('day-btn')) {
+            e.target.classList.toggle('selected');
+        }
+    });
+
+    // Confirm add habit
+    document.getElementById('confirmAddHabit').addEventListener('click', () => {
+        const name = document.getElementById('habitName').value.trim();
+        if (!name) {
+            showToast('Please enter a habit name', 'error');
+            return;
+        }
+
+        const emoji = document.querySelector('.emoji-btn.selected').dataset.emoji;
+        const color = document.querySelector('.color-btn.selected').dataset.color;
+        const frequency = document.querySelector('.freq-btn.selected').dataset.freq;
+
+        let customDays = [];
+        if (frequency === 'custom') {
+            customDays = Array.from(document.querySelectorAll('.day-btn.selected'))
+                .map(b => parseInt(b.dataset.day));
+
+            if (customDays.length === 0) {
+                showToast('Please select at least one day', 'error');
+                return;
+            }
+        }
+
+        addHabit(name, emoji, color, frequency, customDays);
+        hideAddHabitModal();
+    });
+
+    // Delete modal
+    document.getElementById('closeDeleteModal').addEventListener('click', hideDeleteModal);
+    document.getElementById('cancelDelete').addEventListener('click', hideDeleteModal);
+    document.getElementById('confirmDelete').addEventListener('click', () => {
+        if (deleteHabitId) {
+            deleteHabit(deleteHabitId);
+            hideDeleteModal();
+        }
+    });
+
+    // Settings modal
+    document.getElementById('settingsBtn').addEventListener('click', showSettingsModal);
+    document.getElementById('closeSettingsModal').addEventListener('click', hideSettingsModal);
+
+    // Data management
+    document.getElementById('exportData').addEventListener('click', exportData);
+    document.getElementById('importData').addEventListener('click', () => {
+        document.getElementById('importFile').click();
+    });
+    document.getElementById('importFile').addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            importData(e.target.files[0]);
+        }
+    });
+    document.getElementById('resetData').addEventListener('click', resetData);
+
+    // Close modals on overlay click
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.classList.remove('active');
+            }
+        });
+    });
+
+    // Close celebration on click
+    document.getElementById('celebrationOverlay').addEventListener('click', () => {
+        document.getElementById('celebrationOverlay').classList.add('hidden');
+    });
+}
+
+// ==========================================
+// SERVICE WORKER REGISTRATION
+// ==========================================
+
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('Service Worker registered'))
+            .catch(err => console.log('Service Worker registration failed:', err));
+    }
+}
+
+// ==========================================
+// INITIALIZATION
+// ==========================================
+
+function init() {
+    loadData();
+    initEventListeners();
+    renderAll();
+    registerServiceWorker();
+
+    // Check and update streaks on app load
+    updateStreaks();
+    saveData();
+}
+
+// Start the app
+document.addEventListener('DOMContentLoaded', init);
+
+function renderWeekKanban() {
+    // This function is still used by renderAll if called, but not by renderWeekView currently.
+    // It is kept for historical/alternative view support if needed later.
+}
+
+function renderWeekGrid() {
+    const weekGrid = document.getElementById('weekGrid');
+    if (!weekGrid) return;
+
+    // Clear and setup
+    weekGrid.innerHTML = '';
+
+    const weekDates = getWeekDates(currentWeekOffset);
+    const todayStr = getDateString();
+    const dayNames = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+
+    let gridHTML = `
+        <div class="week-header">
+            <div class="week-day-header spacer"></div>
+            ${weekDates.map((date, i) => {
+        const isToday = getDateString(date) === todayStr;
+        return `<div class="week-day-header ${isToday ? 'today' : ''}">
+                    <span class="day-name">${dayNames[i]}</span>
+                    <span class="day-num">${date.getDate()}</span>
+                </div>`;
+    }).join('')}
+        </div>
+    `;
+
+    appData.habits.forEach(habit => {
+        gridHTML += `
+            <div class="habit-row">
+                <div class="habit-row-name">
+                    <span class="habit-row-emoji">${habit.emoji}</span>
+                    <span class="habit-name-text">${habit.name}</span>
+                </div>
+                ${weekDates.map(date => {
+            const dateStr = getDateString(date);
+            const isCompleted = habit.completions[dateStr];
+            const isFuture = date > new Date() && dateStr !== todayStr;
+            const isToday = dateStr === todayStr;
+            const dayOfWeek = getDayOfWeek(date);
+            const isScheduled = shouldShowHabitOnDay(habit, dayOfWeek);
+
+            return `
+                        <div class="week-cell ${isCompleted ? 'completed' : ''} ${isFuture ? 'future' : ''} ${isToday ? 'today' : ''}"
+                             style="--habit-color: ${habit.color}"
+                             data-habit-id="${habit.id}"
+                             data-date="${dateStr}"
+                             ${!isScheduled ? 'data-not-scheduled="true"' : ''}>
+                             ${isCompleted ? '✓' : ''}
+                        </div>
+                    `;
+        }).join('')}
+            </div>
+        `;
+    });
+
+    // Add Weekly To-Dos row to Matrix
+    gridHTML += `
+        <div class="habit-row goals-row">
+            <div class="habit-row-name">
+                <span class="habit-row-emoji">📌</span>
+                <span class="habit-name-text">To-Dos</span>
+            </div>
+            ${weekDates.map(date => {
+        const dateStr = getDateString(date);
+        const dayGoals = appData.dailyGoals.filter(g => g.date === dateStr);
+        const allDone = dayGoals.length > 0 && dayGoals.every(g => g.completed);
+        const isFuture = date > new Date() && dateStr !== todayStr;
+        const isToday = dateStr === todayStr;
+
+        return `
+                    <div class="week-cell goal-cell ${allDone ? 'completed' : ''} ${isFuture ? 'future' : ''} ${isToday ? 'today' : ''}"
+                         style="--habit-color: var(--accent)"
+                         data-date="${dateStr}">
+                         ${allDone ? '✓' : ''}
+                    </div>
+                `;
+    }).join('')}
+        </div>
+    `;
+
+    weekGrid.innerHTML = gridHTML;
+
+    // Add click handlers
+    weekGrid.querySelectorAll('.week-cell:not(.future)').forEach(cell => {
+        cell.addEventListener('click', () => {
+            const habitId = cell.dataset.habitId;
+            const dateStr = cell.dataset.date;
+            toggleHabitCompletion(habitId, dateStr);
+        });
+    });
+
+    // Handle Summary
+    const weekSummary = document.getElementById('weekSummary');
+    if (weekSummary) {
+        weekSummary.style.display = 'block';
+        renderWeeklySummary();
+    }
+}
+
+function renderWeeklySummary() {
+    const weekSummary = document.getElementById('weekSummary');
+    if (!weekSummary) return;
+
+    const weekDates = getWeekDates(currentWeekOffset);
+    const today = new Date();
+    let totalScheduled = 0;
+    let totalCompleted = 0;
+
+    weekDates.forEach(date => {
+        if (date > today) return;
+        const dateStr = getDateString(date);
+        const dayOfWeek = getDayOfWeek(date);
+
+        appData.habits.forEach(habit => {
+            if (shouldShowHabitOnDay(habit, dayOfWeek)) {
+                totalScheduled++;
+                if (habit.completions[dateStr]) totalCompleted++;
+            }
+        });
+    });
+
+    const percent = totalScheduled > 0 ? Math.round((totalCompleted / totalScheduled) * 100) : 0;
+
+    weekSummary.innerHTML = `
+        <div class="summary-card">
+            <div class="summary-title">Weekly Progress</div>
+            <div class="summary-stats">
+                <div class="summary-stat">
+                    <span class="summary-val">${percent}%</span>
+                    <span class="summary-label">Completion</span>
+                </div>
+                <div class="summary-stat">
+                    <span class="summary-val">${totalCompleted}/${totalScheduled}</span>
+                    <span class="summary-label">Habits</span>
+                </div>
+            </div>
+        </div>
+    `;
+}
