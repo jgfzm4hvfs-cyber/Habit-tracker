@@ -1,485 +1,265 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#151515" />
+    <title>Discipline OS</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Work+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css?v=20260418a" />
+  </head>
+  <body>
+    <div class="bg-shape bg-shape-a" aria-hidden="true"></div>
+    <div class="bg-shape bg-shape-b" aria-hidden="true"></div>
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <section id="progressTop" class="progress-top card" aria-label="Progress overview">
+      <header class="progress-top-head">
+        <div>
+          <p class="eyebrow">Progress Overview</p>
+          <h2>Weekly-Goal Completion</h2>
+          <p id="progressTopSubheading" class="muted">
+            100% = you hit your weekly goal. Bars are pro-rated to each habit's target.
+          </p>
+        </div>
+        <div class="progress-range-switch" role="tablist" aria-label="Progress range">
+          <button class="progress-range-btn active" type="button" data-progress-range="7">
+            7-day
+          </button>
+          <button class="progress-range-btn" type="button" data-progress-range="30">
+            30-day
+          </button>
+        </div>
+      </header>
+      <div id="progressGraphList" class="progress-graph-list"></div>
+    </section>
 
-    <!-- PWA & iOS Meta Tags -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Habits">
-    <meta name="theme-color" content="#10b981">
-    <meta name="description" content="Track your habits, build streaks, and become your best self">
-
-    <!-- Icons -->
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-    <link rel="manifest" href="manifest.json">
-
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-    <title>Habit Tracker</title>
-    <link rel="stylesheet" href="styles.css?v=15">
-</head>
-
-<body>
-    <script src="app.js?v=15"></script>
-    <div class="app-container">
-        <!-- Header -->
-        <header class="app-header">
-            <div class="header-content">
-                <div class="header-left">
-                    <h1 class="app-title">My Habits</h1>
-                    <span class="date-display" id="currentDate"></span>
-                </div>
-                <div class="header-right">
-                    <div class="level-badge" id="levelBadge">
-                        <span class="level-icon">⚡</span>
-                        <span class="level-text">Lv. 1</span>
-                    </div>
-                    <button class="icon-btn" id="settingsBtn" aria-label="Settings">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="3"></circle>
-                            <path
-                                d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42">
-                            </path>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Stats Bar -->
-            <div class="stats-bar">
-                <div class="stat-item">
-                    <span class="stat-value" id="todayProgress">0%</span>
-                    <span class="stat-label">Today</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value" id="weekProgress">0%</span>
-                    <span class="stat-label">This Week</span>
-                </div>
-                <div class="stat-item streak-stat">
-                    <span class="stat-value"><span id="currentStreak">0</span> 🔥</span>
-                    <span class="stat-label">Streak</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value" id="totalXP">0</span>
-                    <span class="stat-label">XP</span>
-                </div>
-            </div>
+    <div class="app-shell">
+      <aside class="sidebar card" aria-label="Sidebar">
+        <header class="sidebar-head">
+          <p class="eyebrow">Control System</p>
+          <h1>Discipline OS</h1>
+          <p class="muted">A structure for consistency, not motivation.</p>
         </header>
 
-        <!-- Navigation Tabs -->
-        <nav class="tab-nav">
-            <button class="tab-btn active" data-tab="today">
-                <span class="tab-icon">📅</span>
-                Today
-            </button>
-            <button class="tab-btn" data-tab="week">
-                <span class="tab-icon">📊</span>
-                Week
-            </button>
-            <button class="tab-btn" data-tab="month">
-                <span class="tab-icon">📆</span>
-                Month
-            </button>
-            <button class="tab-btn" data-tab="stats">
-                <span class="tab-icon">📈</span>
-                Stats
-            </button>
-            <button class="tab-btn" data-tab="achievements">
-                <span class="tab-icon">🏆</span>
-                Awards
-            </button>
+        <nav class="mode-switch" aria-label="Sidebar mode">
+          <button class="mode-btn active" data-sidebar-mode="daily">Daily Habits</button>
+          <button class="mode-btn" data-sidebar-mode="analytics">Analytics</button>
         </nav>
 
-        <!-- Main Content -->
-        <main class="main-content">
-            <!-- Today View -->
-            <section class="tab-content active" id="todayTab">
-                <div class="today-header">
-                    <div class="progress-ring-container">
-                        <svg class="progress-ring" viewBox="0 0 120 120">
-                            <circle class="progress-ring-bg" cx="60" cy="60" r="52"></circle>
-                            <circle class="progress-ring-fill" id="todayRing" cx="60" cy="60" r="52"></circle>
-                        </svg>
-                        <div class="progress-ring-text">
-                            <span class="progress-percent" id="todayPercent">0%</span>
-                            <span class="progress-label">Complete</span>
-                        </div>
-                    </div>
-                    <div class="today-motivation" id="motivationText">
-                        Start strong! Complete your habits for today.
-                    </div>
-                </div>
+        <section id="dailyPanel" class="side-panel active" aria-label="Daily panel">
+          <div class="section-head">
+            <h2>Today</h2>
+            <p id="todayLabel" class="muted"></p>
+          </div>
+          <div id="todayChecklist" class="today-list"></div>
+          <div class="day-progress-wrap">
+            <div class="segment-track" id="todaySegmentTrack"></div>
+            <p id="todaySummaryLabel" class="summary-label">0%</p>
+          </div>
+        </section>
 
-                <div class="habits-list" id="habitsList">
-                    <!-- Habits will be rendered here -->
-                </div>
+        <section id="analyticsPanel" class="side-panel" aria-label="Analytics panel">
+          <div class="section-head">
+            <h2>Analytics</h2>
+            <p class="muted">Last 30 days</p>
+          </div>
+          <div id="analyticsHabitList" class="analytics-list"></div>
+        </section>
 
-                <button class="add-habit-btn" id="addHabitBtn">
-                    <span class="add-icon">+</span>
-                    Add New Habit
-                </button>
+        <footer class="sidebar-actions">
+          <button id="openSyncBtn" class="btn secondary">Cloud Sync</button>
+        </footer>
+      </aside>
 
-                <!-- Daily Goals Section -->
-                <div class="daily-goals-section">
-                    <div class="section-header">
-                        <h3>📋 Today's Goals</h3>
-                        <span class="goals-count" id="goalsCount">0/0</span>
-                    </div>
-                    <div class="daily-goals-list" id="dailyGoalsList">
-                        <!-- Daily goals will be rendered here -->
-                    </div>
-                    <button class="add-goal-btn" id="addGoalBtn">
-                        <span class="add-icon">+</span>
-                        Add Today's Goal
-                    </button>
-                </div>
-            </section>
+      <main class="main">
+        <header class="main-header card">
+          <div>
+            <p class="eyebrow">Habit Operations Center</p>
+            <h2 id="mainHeading">This Week</h2>
+            <p id="mainSubheading" class="muted"></p>
+          </div>
+          <div class="header-tools">
+            <span id="syncBadge" class="sync-badge local">Local only</span>
+            <span id="authBadge" class="sync-badge local">Not signed in</span>
+            <button id="manageHabitsBtn" class="btn secondary">Manage Habits</button>
+            <button id="quickStrengthBtn" class="btn primary">Toggle Strength Training</button>
+          </div>
+        </header>
 
-            <!-- Week View -->
-            <section class="tab-content" id="weekTab">
-                <div class="week-navigation">
-                    <button class="week-nav-btn" id="prevWeek">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M15 18l-6-6 6-6"></path>
-                        </svg>
-                    </button>
-                    <span class="week-label" id="weekLabel">This Week</span>
-                    <button class="week-nav-btn" id="nextWeek">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M9 18l6-6-6-6"></path>
-                        </svg>
-                    </button>
-                </div>
+        <section class="toolbar card" aria-label="View controls">
+          <div class="view-switch" role="tablist" aria-label="Main view switch">
+            <button class="view-btn active" data-view-mode="week">Week Table</button>
+            <button class="view-btn" data-view-mode="month">Full Month</button>
+            <button class="view-btn" data-view-mode="heatmap">Month Heatmap</button>
+          </div>
+          <div class="nav-tools">
+            <button id="prevPeriodBtn" class="btn ghost">Previous</button>
+            <button id="todayBtn" class="btn ghost">Today</button>
+            <button id="nextPeriodBtn" class="btn ghost">Next</button>
+            <p id="periodLabel" class="period-label"></p>
+          </div>
+        </section>
 
-                <div class="week-grid-container">
-                    <div class="week-grid" id="weekGrid">
-                        <!-- Week grid (Matrix) will be rendered here -->
-                    </div>
-                </div>
+        <section id="weekView" class="main-view active card" aria-label="Weekly table">
+          <div class="table-scroll">
+            <table class="week-table">
+              <thead id="weekTableHead"></thead>
+              <tbody id="weekTableBody"></tbody>
+            </table>
+          </div>
+          <div id="weekCards" class="week-cards"></div>
+        </section>
 
-                <div class="week-summary" id="weekSummary">
-                    <!-- Weekly summary will be rendered here -->
-                </div>
-            </section>
+        <section id="monthView" class="main-view card" aria-label="Monthly calendar">
+          <div id="monthGrid" class="month-grid"></div>
+        </section>
 
-            <!-- Month View -->
-            <section class="tab-content" id="monthTab">
-                <div class="month-navigation">
-                    <button class="week-nav-btn" id="prevMonth">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M15 18l-6-6 6-6"></path>
-                        </svg>
-                    </button>
-                    <span class="week-label" id="monthLabel">January 2026</span>
-                    <button class="week-nav-btn" id="nextMonth">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M9 18l6-6-6-6"></path>
-                        </svg>
-                    </button>
-                </div>
-
-                <div class="month-stats-row">
-                    <div class="month-stat">
-                        <span class="month-stat-value" id="monthCompletion">0%</span>
-                        <span class="month-stat-label">Completion</span>
-                    </div>
-                    <div class="month-stat">
-                        <span class="month-stat-value" id="monthCompleted">0</span>
-                        <span class="month-stat-label">Completed</span>
-                    </div>
-                    <div class="month-stat">
-                        <span class="month-stat-value" id="monthTotal">0</span>
-                        <span class="month-stat-label">Total</span>
-                    </div>
-                </div>
-
-                <!-- Month Line Chart -->
-                <div class="line-chart-container">
-                    <div class="chart-header">
-                        <span class="chart-title">Progress Over Time</span>
-                    </div>
-                    <div class="line-chart month-chart" id="monthLineChart">
-                        <!-- Chart will be rendered here -->
-                    </div>
-                </div>
-
-                <div class="month-grid-container">
-                    <div class="month-grid" id="monthGrid">
-                        <!-- Month grid will be rendered here -->
-                    </div>
-                </div>
-            </section>
-
-            <!-- Stats View -->
-            <section class="tab-content" id="statsTab">
-                <div class="stats-cards">
-                    <div class="stats-card">
-                        <div class="stats-card-header">
-                            <span class="stats-card-icon">📊</span>
-                            <h3>Overall Progress</h3>
-                        </div>
-                        <div class="stats-card-content">
-                            <div class="big-stat" id="overallCompletion">0%</div>
-                            <div class="stat-subtitle">All-time completion rate</div>
-                        </div>
-                    </div>
-
-                    <div class="stats-card">
-                        <div class="stats-card-header">
-                            <span class="stats-card-icon">🔥</span>
-                            <h3>Streaks</h3>
-                        </div>
-                        <div class="stats-card-content">
-                            <div class="streak-stats">
-                                <div class="streak-stat-item">
-                                    <span class="streak-value" id="currentStreakStat">0</span>
-                                    <span class="streak-label">Current</span>
-                                </div>
-                                <div class="streak-stat-item">
-                                    <span class="streak-value" id="longestStreak">0</span>
-                                    <span class="streak-label">Longest</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="stats-card full-width">
-                        <div class="stats-card-header">
-                            <span class="stats-card-icon">📆</span>
-                            <h3>Habit Performance</h3>
-                        </div>
-                        <div class="habit-performance-list" id="habitPerformance">
-                            <!-- Performance list will be rendered here -->
-                        </div>
-                    </div>
-
-                    <div class="stats-card full-width">
-                        <div class="stats-card-header">
-                            <span class="stats-card-icon">📅</span>
-                            <h3>Best Days</h3>
-                        </div>
-                        <div class="best-days" id="bestDays">
-                            <!-- Best days will be rendered here -->
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Achievements View -->
-            <section class="tab-content" id="achievementsTab">
-                <div class="achievements-header">
-                    <div class="xp-display">
-                        <span class="xp-icon">⚡</span>
-                        <span class="xp-value" id="totalXPDisplay">0 XP</span>
-                    </div>
-                    <div class="level-progress">
-                        <div class="level-info">
-                            <span id="currentLevel">Level 1</span>
-                            <span id="nextLevel">Level 2</span>
-                        </div>
-                        <div class="level-bar">
-                            <div class="level-fill" id="levelFill"></div>
-                        </div>
-                        <div class="xp-to-next" id="xpToNext">0 / 100 XP</div>
-                    </div>
-                </div>
-
-                <div class="achievements-grid" id="achievementsGrid">
-                    <!-- Achievements will be rendered here -->
-                </div>
-            </section>
-        </main>
+        <section id="heatmapView" class="main-view card" aria-label="Monthly habit heatmap">
+          <div class="heatmap-scroll">
+            <div id="habitHeatmap" class="habit-heatmap"></div>
+          </div>
+        </section>
+      </main>
     </div>
 
-    <!-- Add Habit Modal -->
-    <div class="modal-overlay" id="addHabitModal">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Add New Habit</h2>
-                <button class="modal-close" id="closeAddModal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="habitName">Habit Name</label>
-                    <input type="text" id="habitName" placeholder="e.g., Morning Run" maxlength="30">
-                </div>
+    <div id="bootOverlay" class="boot-overlay" aria-live="polite">
+      <div class="boot-overlay-card">
+        <span class="boot-spinner" aria-hidden="true"></span>
+        <p id="bootOverlayText">Loading your latest habits...</p>
+      </div>
+    </div>
 
-                <div class="form-group">
-                    <label>Choose an Icon</label>
-                    <div class="emoji-picker" id="emojiPicker">
-                        <button class="emoji-btn selected" data-emoji="🏃">🏃</button>
-                        <button class="emoji-btn" data-emoji="📚">📚</button>
-                        <button class="emoji-btn" data-emoji="🧘">🧘</button>
-                        <button class="emoji-btn" data-emoji="💪">💪</button>
-                        <button class="emoji-btn" data-emoji="🥗">🥗</button>
-                        <button class="emoji-btn" data-emoji="💧">💧</button>
-                        <button class="emoji-btn" data-emoji="😴">😴</button>
-                        <button class="emoji-btn" data-emoji="📝">📝</button>
-                        <button class="emoji-btn" data-emoji="🎯">🎯</button>
-                        <button class="emoji-btn" data-emoji="🎨">🎨</button>
-                        <button class="emoji-btn" data-emoji="🎵">🎵</button>
-                        <button class="emoji-btn" data-emoji="💻">💻</button>
-                        <button class="emoji-btn" data-emoji="🌱">🌱</button>
-                        <button class="emoji-btn" data-emoji="☀️">☀️</button>
-                        <button class="emoji-btn" data-emoji="🧹">🧹</button>
-                        <button class="emoji-btn" data-emoji="💰">💰</button>
-                        <button class="emoji-btn" data-emoji="📱">📱</button>
-                        <button class="emoji-btn" data-emoji="🚭">🚭</button>
-                        <button class="emoji-btn" data-emoji="🍎">🍎</button>
-                        <button class="emoji-btn" data-emoji="⏰">⏰</button>
-                    </div>
-                </div>
+    <dialog id="syncModal" class="sync-modal">
+      <form id="syncForm" method="dialog">
+        <header class="section-head">
+          <h2>Google Sheets Sync</h2>
+          <p class="muted">Use one sheet for both iPhone and Mac</p>
+        </header>
 
-                <div class="form-group">
-                    <label>Choose a Color</label>
-                    <div class="color-picker" id="colorPicker">
-                        <button class="color-btn selected" data-color="#10b981" style="background: #10b981"></button>
-                        <button class="color-btn" data-color="#3b82f6" style="background: #3b82f6"></button>
-                        <button class="color-btn" data-color="#8b5cf6" style="background: #8b5cf6"></button>
-                        <button class="color-btn" data-color="#ec4899" style="background: #ec4899"></button>
-                        <button class="color-btn" data-color="#f59e0b" style="background: #f59e0b"></button>
-                        <button class="color-btn" data-color="#ef4444" style="background: #ef4444"></button>
-                        <button class="color-btn" data-color="#06b6d4" style="background: #06b6d4"></button>
-                        <button class="color-btn" data-color="#84cc16" style="background: #84cc16"></button>
-                    </div>
-                </div>
+        <label for="cloudEnabled" class="inline-label">
+          <input id="cloudEnabled" type="checkbox" />
+          Enable cloud sync
+        </label>
 
-                <div class="form-group">
-                    <label>Frequency</label>
-                    <div class="frequency-picker" id="frequencyPicker">
-                        <button class="freq-btn selected" data-freq="daily">Daily</button>
-                        <button class="freq-btn" data-freq="weekdays">Weekdays</button>
-                        <button class="freq-btn" data-freq="weekends">Weekends</button>
-                        <button class="freq-btn" data-freq="custom">Custom</button>
-                    </div>
-                    <div class="custom-days hidden" id="customDays">
-                        <button class="day-btn" data-day="0">Su</button>
-                        <button class="day-btn" data-day="1">Mo</button>
-                        <button class="day-btn" data-day="2">Tu</button>
-                        <button class="day-btn" data-day="3">We</button>
-                        <button class="day-btn" data-day="4">Th</button>
-                        <button class="day-btn" data-day="5">Fr</button>
-                        <button class="day-btn" data-day="6">Sa</button>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancelAddHabit">Cancel</button>
-                <button class="btn btn-primary" id="confirmAddHabit">Add Habit</button>
-            </div>
+        <label for="cloudWebAppUrl">Apps Script Web App URL</label>
+        <input
+          id="cloudWebAppUrl"
+          type="url"
+          placeholder="https://script.google.com/macros/s/xxxx/exec"
+        />
+
+        <label for="cloudUserId">User ID</label>
+        <input id="cloudUserId" type="text" value="default" placeholder="default" />
+
+        <div class="auth-panel">
+          <p id="authStatusText" class="muted">Google sign-in required for sync.</p>
+          <div id="googleSignInButton"></div>
+          <button id="signOutBtn" class="btn ghost" type="button">Sign out</button>
         </div>
-    </div>
 
-    <!-- Settings Modal -->
-    <div class="modal-overlay" id="settingsModal">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Settings</h2>
-                <button class="modal-close" id="closeSettingsModal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="settings-section">
-                    <h3>Data Management</h3>
-                    <button class="btn btn-secondary full-width" id="exportData">
-                        📤 Export Data
-                    </button>
-                    <button class="btn btn-secondary full-width" id="importData">
-                        📥 Import Data
-                    </button>
-                    <input type="file" id="importFile" accept=".json" hidden>
-                </div>
-
-                <div class="settings-section">
-                    <h3>Danger Zone</h3>
-                    <button class="btn btn-danger full-width" id="resetData">
-                        🗑️ Reset All Data
-                    </button>
-                </div>
-
-                <div class="settings-section">
-                    <h3>About</h3>
-                    <p class="settings-text">Habit Tracker v1.0</p>
-                    <p class="settings-text">Built with ❤️ for productivity</p>
-                </div>
-            </div>
+        <div class="button-row">
+          <button id="saveSyncBtn" class="btn primary" type="button">Save</button>
+          <button id="testSyncBtn" class="btn secondary" type="button">Test</button>
+          <button id="pullSyncBtn" class="btn secondary" type="button">Pull</button>
+          <button id="pushSyncBtn" class="btn ghost" type="button">Push</button>
         </div>
-    </div>
 
-    <!-- Delete Confirmation Modal -->
-    <div class="modal-overlay" id="deleteModal">
-        <div class="modal modal-small">
-            <div class="modal-header">
-                <h2>Delete Habit</h2>
-                <button class="modal-close" id="closeDeleteModal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to delete <strong id="deleteHabitName"></strong>?</p>
-                <p class="warning-text">This will remove all history for this habit.</p>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancelDelete">Cancel</button>
-                <button class="btn btn-danger" id="confirmDelete">Delete</button>
-            </div>
+        <p id="syncStatusText" class="sync-badge local">Local only</p>
+        <p id="syncLastText" class="muted">Last sync: never</p>
+
+        <section class="notify-section">
+          <header class="section-head">
+            <h2>Daily Reminder (ntfy)</h2>
+            <p class="muted">
+              Free push notifications via ntfy.sh. Fires at 8:00 PM only on days you haven't
+              logged any habits.
+            </p>
+          </header>
+          <label for="ntfyTopicValue">Your ntfy topic (subscribe to this in the ntfy app)</label>
+          <input id="ntfyTopicValue" type="text" readonly value="disc-os-habits-k9m2p7x4r8n5j3vq6t1f" />
+          <p class="muted">
+            Install the free <strong>ntfy</strong> app on your phone, tap "+" and paste the topic
+            above. Notifications will appear titled "Discipline OS" and tap to open your tracker.
+          </p>
+        </section>
+
+        <div class="button-row modal-footer">
+          <button id="closeSyncBtn" class="btn ghost" type="button">Close</button>
         </div>
-    </div>
+      </form>
+    </dialog>
 
-    <!-- Add Daily Goal Modal -->
-    <div class="modal-overlay" id="addGoalModal">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Add Today's Goal</h2>
-                <button class="modal-close" id="closeGoalModal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="goalText">What do you want to accomplish?</label>
-                    <input type="text" id="goalText" placeholder="e.g., Wake up at 7 for doctor appointment"
-                        maxlength="100">
-                </div>
+    <dialog id="habitsModal" class="sync-modal habits-modal">
+      <form id="habitsForm" method="dialog">
+        <header class="section-head">
+          <h2>Manage Habits</h2>
+          <p class="muted">Cornerstone on top, regular below</p>
+        </header>
 
-                <div class="form-group">
-                    <label for="goalDate">Date</label>
-                    <input type="date" id="goalDate">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancelAddGoal">Cancel</button>
-                <button class="btn btn-primary" id="confirmAddGoal">Add Goal</button>
-            </div>
+        <div id="habitEditorList" class="habit-editor-list"></div>
+
+        <section class="habit-create">
+          <label for="newHabitName">New habit name</label>
+          <input id="newHabitName" type="text" placeholder="Example: Read 20 min" />
+
+          <label for="newHabitEmoji">Emoji</label>
+          <input id="newHabitEmoji" type="text" placeholder="📖" />
+
+          <label for="newHabitType">Type</label>
+          <select id="newHabitType">
+            <option value="cornerstone">Cornerstone (daily)</option>
+            <option value="regular" selected>Regular</option>
+          </select>
+
+          <label for="newHabitTarget">Days per week</label>
+          <input id="newHabitTarget" type="number" min="1" max="7" value="3" />
+
+          <button id="addHabitBtn" class="btn primary" type="button">Add Habit</button>
+        </section>
+
+        <div class="button-row modal-footer">
+          <button id="closeHabitsBtn" class="btn ghost" type="button">Close</button>
         </div>
-    </div>
+      </form>
+    </dialog>
 
-    <!-- Celebration Overlay -->
-    <div class="celebration-overlay hidden" id="celebrationOverlay">
-        <div class="celebration-content">
-            <div class="celebration-emoji" id="celebrationEmoji">🎉</div>
-            <div class="celebration-text" id="celebrationText">Amazing!</div>
-            <div class="celebration-subtext" id="celebrationSubtext">You completed all habits today!</div>
+    <dialog id="dayDetailsModal" class="sync-modal day-details-modal">
+      <form id="dayDetailsForm" method="dialog">
+        <header class="section-head">
+          <h2 id="dayDetailsTitle">Day Details</h2>
+          <p id="dayDetailsSummary" class="muted"></p>
+        </header>
+
+        <section class="day-details-progress">
+          <div id="dayDetailsTrack" class="segment-track"></div>
+          <p id="dayDetailsRate" class="summary-label">0%</p>
+        </section>
+
+        <label for="dayDetailsNoteInput">Notes</label>
+        <textarea id="dayDetailsNoteInput" rows="3" placeholder="Add notes for this day"></textarea>
+
+        <section class="day-details-habits">
+          <h3>Habits</h3>
+          <div id="dayDetailsHabitsList" class="day-details-habits-list"></div>
+        </section>
+
+        <div class="button-row modal-footer">
+          <button id="saveDayDetailsBtn" class="btn primary" type="button">Save</button>
+          <button id="closeDayDetailsBtn" class="btn ghost" type="button">Close</button>
         </div>
-    </div>
+      </form>
+    </dialog>
 
-    <!-- Toast Notifications -->
-    <div class="toast-container" id="toastContainer"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script>
-        // Force unregister all SWs to fix caching issues
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function (registrations) {
-                for (let registration of registrations) {
-                    registration.unregister();
-                }
-            });
-        }
-    </script>
-    <script src="app.js?v=12"></script>
-</body>
-
+    <script src="./cloud-config.js?v=20260214"></script>
+    <script src="./app.js?v=20260418a" defer></script>
+  </body>
 </html>
