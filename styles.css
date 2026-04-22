@@ -176,6 +176,12 @@ textarea {
   stroke-dasharray: 2 3;
 }
 
+.chart-grid-goal {
+  stroke: rgba(35, 138, 89, 0.5);
+  stroke-width: 1.2;
+  stroke-dasharray: none;
+}
+
 .chart-axis {
   stroke: rgba(25, 25, 35, 0.22);
   stroke-width: 1;

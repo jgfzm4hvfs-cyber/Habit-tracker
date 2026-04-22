@@ -668,23 +668,38 @@
     const padT = 20;
     const padR = 22;
     const padB = 58;
-    const padL = 46;
+    const padL = 52;
     const plotHeight = 180;
     const minSpacing = 58;
     const plotWidth = Math.max(260, Math.max(1, habits.length - 1) * minSpacing);
     const width = padL + plotWidth + padR;
     const height = padT + plotHeight + padB;
 
+    // Auto-scale Y axis: at least 0-100%, extend in 25% steps if any habit exceeds 100%.
+    const allRates = [];
+    data.forEach((d) => {
+      allRates.push(d.rate7, d.rate30);
+    });
+    const observedMax = allRates.length ? Math.max.apply(null, allRates) : 0;
+    const yMax = Math.max(1, Math.ceil(observedMax * 4 + 0.0001) / 4);
+
     const xAt = (i) =>
       padL + (habits.length > 1 ? (i / (habits.length - 1)) * plotWidth : plotWidth / 2);
-    const yAt = (rate) => padT + plotHeight - Math.max(0, Math.min(1, rate)) * plotHeight;
+    const yAt = (rate) => padT + plotHeight - (Math.max(0, rate) / yMax) * plotHeight;
 
-    const ticks = [0, 0.25, 0.5, 0.75, 1];
+    const ticks = [];
+    for (let t = 0; t <= yMax + 0.0001; t += 0.25) {
+      ticks.push(Math.round(t * 100) / 100);
+    }
+
     const gridlines = ticks
       .map((t) => {
         const y = yAt(t);
+        const isHundred = Math.abs(t - 1) < 0.001;
         return (
-          `<line x1="${padL}" y1="${y}" x2="${padL + plotWidth}" y2="${y}" class="chart-grid"></line>` +
+          `<line x1="${padL}" y1="${y}" x2="${padL + plotWidth}" y2="${y}" class="chart-grid${
+            isHundred ? " chart-grid-goal" : ""
+          }"></line>` +
           `<text x="${padL - 10}" y="${y + 4}" class="chart-y-label" text-anchor="end">${Math.round(
             t * 100,
           )}%</text>`
@@ -772,7 +787,8 @@
       return 0;
     }
     const completed = countCompletionsInRange(habit, daysBack);
-    return Math.max(0, Math.min(1, completed / expected));
+    // No upper cap: beating your weekly goal can exceed 100% (e.g. target 4/wk, did 5 → 125%).
+    return Math.max(0, completed / expected);
   }
 
   function renderHeader() {
