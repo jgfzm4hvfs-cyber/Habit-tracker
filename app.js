@@ -644,54 +644,114 @@
     }
 
     const habits = getActiveHabits();
-    const fragment = document.createDocumentFragment();
 
     if (!habits.length) {
-      const empty = document.createElement("p");
-      empty.className = "month-empty";
-      empty.textContent = "Add a habit to see your progress.";
-      refs.progressGraphList.replaceChildren(empty);
+      refs.progressGraphList.innerHTML =
+        '<p class="month-empty">Add a habit to see your progress.</p>';
+      if (refs.progressTopSubheading) {
+        refs.progressTopSubheading.textContent =
+          "Rolling 7-day and 30-day completion. 100% = weekly goal hit.";
+      }
+      refs.progressRangeButtons.forEach((b) => (b.style.display = "none"));
       return;
     }
 
-    habits.forEach((habit) => {
-      const rate = getWeeklyGoalRate(habit, progressRangeDays);
-      const pct = Math.round(rate * 100);
-      const target = habit.targetPerWeek || 7;
-      const expected =
-        progressRangeDays === 7 ? target : Math.round((target * progressRangeDays) / 7);
-      const actual = countCompletionsInRange(habit, progressRangeDays);
+    // Hide the 7/30 toggle (both lines are shown now)
+    refs.progressRangeButtons.forEach((b) => (b.style.display = "none"));
 
-      const row = document.createElement("article");
-      row.className = "progress-bar-row";
-      row.style.setProperty("--habit-color", habit.color);
-      row.innerHTML = `
-        <div class="progress-bar-label">
-          <span class="progress-bar-icon">${habit.icon}</span>
-          <span class="progress-bar-name">${escapeHtml(habit.name)}</span>
-          <span class="progress-bar-meta muted">${actual}/${expected} · goal ${target}/wk</span>
-        </div>
-        <div class="progress-bar-track">
-          <span class="progress-bar-fill" style="width:${pct}%"></span>
-        </div>
-        <strong class="progress-bar-value">${pct}%</strong>
-      `;
-      fragment.appendChild(row);
-    });
+    const data = habits.map((h) => ({
+      habit: h,
+      rate7: getWeeklyGoalRate(h, 7),
+      rate30: getWeeklyGoalRate(h, 30),
+    }));
 
-    refs.progressGraphList.replaceChildren(fragment);
+    const padT = 20;
+    const padR = 22;
+    const padB = 58;
+    const padL = 46;
+    const plotHeight = 180;
+    const minSpacing = 58;
+    const plotWidth = Math.max(260, Math.max(1, habits.length - 1) * minSpacing);
+    const width = padL + plotWidth + padR;
+    const height = padT + plotHeight + padB;
+
+    const xAt = (i) =>
+      padL + (habits.length > 1 ? (i / (habits.length - 1)) * plotWidth : plotWidth / 2);
+    const yAt = (rate) => padT + plotHeight - Math.max(0, Math.min(1, rate)) * plotHeight;
+
+    const ticks = [0, 0.25, 0.5, 0.75, 1];
+    const gridlines = ticks
+      .map((t) => {
+        const y = yAt(t);
+        return (
+          `<line x1="${padL}" y1="${y}" x2="${padL + plotWidth}" y2="${y}" class="chart-grid"></line>` +
+          `<text x="${padL - 10}" y="${y + 4}" class="chart-y-label" text-anchor="end">${Math.round(
+            t * 100,
+          )}%</text>`
+        );
+      })
+      .join("");
+
+    const axis =
+      `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + plotHeight}" class="chart-axis"></line>` +
+      `<line x1="${padL}" y1="${padT + plotHeight}" x2="${padL + plotWidth}" y2="${padT + plotHeight}" class="chart-axis"></line>`;
+
+    const points7 = data.map((d, i) => `${xAt(i)},${yAt(d.rate7)}`).join(" ");
+    const points30 = data.map((d, i) => `${xAt(i)},${yAt(d.rate30)}`).join(" ");
+
+    const dots30 = data
+      .map(
+        (d, i) =>
+          `<circle cx="${xAt(i)}" cy="${yAt(d.rate30)}" r="3.8" class="chart-dot chart-dot-30"><title>${escapeHtml(
+            d.habit.name,
+          )} · 30-day: ${Math.round(d.rate30 * 100)}%</title></circle>`,
+      )
+      .join("");
+    const dots7 = data
+      .map(
+        (d, i) =>
+          `<circle cx="${xAt(i)}" cy="${yAt(d.rate7)}" r="3.8" class="chart-dot chart-dot-7"><title>${escapeHtml(
+            d.habit.name,
+          )} · 7-day: ${Math.round(d.rate7 * 100)}%</title></circle>`,
+      )
+      .join("");
+
+    const xLabels = data
+      .map((d, i) => {
+        const x = xAt(i);
+        const short =
+          d.habit.name.length > 10 ? d.habit.name.slice(0, 10).trim() + "…" : d.habit.name;
+        return (
+          `<text x="${x}" y="${padT + plotHeight + 18}" class="chart-x-icon" text-anchor="middle">${d.habit.icon}</text>` +
+          `<text x="${x}" y="${padT + plotHeight + 36}" class="chart-x-label" text-anchor="end" transform="rotate(-30, ${x}, ${padT +
+            plotHeight +
+            36})">${escapeHtml(short)}</text>`
+        );
+      })
+      .join("");
+
+    const svg = `
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" class="progress-chart-svg" role="img" aria-label="Weekly goal completion chart: 7-day and 30-day rolling averages per habit">
+        ${gridlines}
+        ${axis}
+        <polyline points="${points30}" class="chart-line chart-line-30" fill="none"></polyline>
+        <polyline points="${points7}" class="chart-line chart-line-7" fill="none"></polyline>
+        ${dots30}
+        ${dots7}
+        ${xLabels}
+      </svg>
+      <div class="progress-chart-legend">
+        <span class="chart-legend-item"><span class="chart-legend-swatch chart-legend-7"></span>7-day rolling</span>
+        <span class="chart-legend-item"><span class="chart-legend-swatch chart-legend-30"></span>30-day rolling</span>
+      </div>
+    `;
+
+    refs.progressGraphList.innerHTML = svg;
 
     if (refs.progressTopSubheading) {
       refs.progressTopSubheading.textContent =
-        progressRangeDays === 7
-          ? "Rolling 7-day window. 100% = weekly goal hit."
-          : "Rolling 30-day window. 100% = weekly goal hit every week (pro-rated).";
+        "Rolling 7-day and 30-day completion. 100% = weekly goal hit.";
     }
-
-    refs.progressRangeButtons.forEach((button) => {
-      const isActive = Number(button.dataset.progressRange) === progressRangeDays;
-      button.classList.toggle("active", isActive);
-    });
   }
 
   function countCompletionsInRange(habit, daysBack) {

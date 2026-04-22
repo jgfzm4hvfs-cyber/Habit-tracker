@@ -162,6 +162,113 @@ textarea {
   gap: 0.55rem;
 }
 
+.progress-chart-svg {
+  width: 100%;
+  height: auto;
+  max-height: 280px;
+  display: block;
+  overflow: visible;
+}
+
+.chart-grid {
+  stroke: rgba(25, 25, 35, 0.08);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.chart-axis {
+  stroke: rgba(25, 25, 35, 0.22);
+  stroke-width: 1;
+}
+
+.chart-y-label,
+.chart-x-label,
+.chart-x-icon {
+  font-family: var(--font-body);
+  fill: var(--text-soft);
+}
+
+.chart-y-label {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.chart-x-icon {
+  font-size: 14px;
+}
+
+.chart-x-label {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.chart-line {
+  stroke-width: 2.4;
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart-line-7 {
+  stroke: #2563d2;
+}
+
+.chart-line-30 {
+  stroke: #2f8b5d;
+  stroke-dasharray: 5 4;
+  opacity: 0.9;
+}
+
+.chart-dot {
+  stroke: #ffffff;
+  stroke-width: 1.5;
+}
+
+.chart-dot-7 {
+  fill: #2563d2;
+}
+
+.chart-dot-30 {
+  fill: #2f8b5d;
+}
+
+.progress-chart-legend {
+  display: flex;
+  justify-content: center;
+  gap: 1.2rem;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+  font-weight: 600;
+  flex-wrap: wrap;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.chart-legend-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.chart-legend-7 {
+  background: #2563d2;
+}
+
+.chart-legend-30 {
+  background: #2f8b5d;
+  background-image: repeating-linear-gradient(
+    90deg,
+    #2f8b5d 0 5px,
+    transparent 5px 9px
+  );
+}
+
 .progress-bar-row {
   display: grid;
   grid-template-columns: minmax(180px, 1.3fr) minmax(0, 2.5fr) auto;
