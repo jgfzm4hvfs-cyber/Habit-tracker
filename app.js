@@ -159,24 +159,15 @@
 
   const refs = {
     todayLabel: byId("todayLabel"),
-    mainHeading: byId("mainHeading"),
-    mainSubheading: byId("mainSubheading"),
     periodLabel: byId("periodLabel"),
     syncBadge: byId("syncBadge"),
     authBadge: byId("authBadge"),
 
-    modeButtons: Array.from(document.querySelectorAll(".mode-btn")),
     viewButtons: Array.from(document.querySelectorAll(".view-btn")),
 
-    dailyPanel: byId("dailyPanel"),
-    analyticsPanel: byId("analyticsPanel"),
     todayChecklist: byId("todayChecklist"),
     todaySegmentTrack: byId("todaySegmentTrack"),
     todaySummaryLabel: byId("todaySummaryLabel"),
-    analyticsHabitList: byId("analyticsHabitList"),
-
-    manageHabitsBtn: byId("manageHabitsBtn"),
-    quickStrengthBtn: byId("quickStrengthBtn"),
 
     prevPeriodBtn: byId("prevPeriodBtn"),
     nextPeriodBtn: byId("nextPeriodBtn"),
@@ -184,18 +175,23 @@
 
     weekView: byId("weekView"),
     weekCards: byId("weekCards"),
-    monthView: byId("monthView"),
     heatmapView: byId("heatmapView"),
     weekTableHead: byId("weekTableHead"),
     weekTableBody: byId("weekTableBody"),
-    monthGrid: byId("monthGrid"),
     habitHeatmap: byId("habitHeatmap"),
 
-    openSyncBtn: byId("openSyncBtn"),
-    syncModal: byId("syncModal"),
-    closeSyncBtn: byId("closeSyncBtn"),
-    habitsModal: byId("habitsModal"),
-    closeHabitsBtn: byId("closeHabitsBtn"),
+    // Sidebar drawer
+    openSidebarBtn: byId("openSidebarBtn"),
+    closeSidebarBtn: byId("closeSidebarBtn"),
+    sidebarDrawer: byId("sidebarDrawer"),
+    drawerBackdrop: byId("drawerBackdrop"),
+
+    // Sign-in banner
+    signInBanner: byId("signInBanner"),
+    signInBannerBtn: byId("signInBannerBtn"),
+    dismissSignInBannerBtn: byId("dismissSignInBannerBtn"),
+
+    // Habits editor (now in drawer)
     habitEditorList: byId("habitEditorList"),
     newHabitName: byId("newHabitName"),
     newHabitEmoji: byId("newHabitEmoji"),
@@ -203,6 +199,12 @@
     newHabitTarget: byId("newHabitTarget"),
     addHabitBtn: byId("addHabitBtn"),
 
+    // Sync modal
+    openSyncBtn: byId("openSyncBtn"),
+    syncModal: byId("syncModal"),
+    closeSyncBtn: byId("closeSyncBtn"),
+
+    // Day details modal
     dayDetailsModal: byId("dayDetailsModal"),
     closeDayDetailsBtn: byId("closeDayDetailsBtn"),
     saveDayDetailsBtn: byId("saveDayDetailsBtn"),
@@ -213,6 +215,7 @@
     dayDetailsNoteInput: byId("dayDetailsNoteInput"),
     dayDetailsHabitsList: byId("dayDetailsHabitsList"),
 
+    // Sync fields
     cloudEnabled: byId("cloudEnabled"),
     cloudWebAppUrl: byId("cloudWebAppUrl"),
     cloudUserId: byId("cloudUserId"),
@@ -234,7 +237,6 @@
     progressGraphList: byId("progressGraphList"),
     progressTopSubheading: byId("progressTopSubheading"),
     progressRangeButtons: Array.from(document.querySelectorAll(".progress-range-btn")),
-    ntfyTopicValue: byId("ntfyTopicValue"),
   };
 
   initialize();
@@ -281,13 +283,43 @@
   }
 
   function bindEvents() {
-    refs.modeButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        state.sidebarMode = button.dataset.sidebarMode;
-        persistState({ skipCloud: true });
-        renderSidebarMode();
-      });
+    // Sidebar drawer open/close
+    if (refs.openSidebarBtn) {
+      refs.openSidebarBtn.addEventListener("click", () => openSidebar());
+    }
+    if (refs.closeSidebarBtn) {
+      refs.closeSidebarBtn.addEventListener("click", () => closeSidebar());
+    }
+    if (refs.drawerBackdrop) {
+      refs.drawerBackdrop.addEventListener("click", () => closeSidebar());
+    }
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && refs.sidebarDrawer && !refs.sidebarDrawer.hidden) {
+        closeSidebar();
+      }
     });
+
+    // Sign-in banner actions
+    if (refs.signInBannerBtn) {
+      refs.signInBannerBtn.addEventListener("click", () => {
+        if (window.google && window.google.accounts && window.google.accounts.id) {
+          try {
+            window.google.accounts.id.prompt();
+          } catch (e) {
+            // If FedCM prompt fails, open drawer where the Google button lives.
+            openSidebar();
+          }
+        } else {
+          openSidebar();
+        }
+      });
+    }
+    if (refs.dismissSignInBannerBtn) {
+      refs.dismissSignInBannerBtn.addEventListener("click", () => {
+        dismissSignInBannerForToday_();
+        renderSignInBanner();
+      });
+    }
 
     refs.progressRangeButtons.forEach((button) => {
       button.addEventListener("click", () => {
@@ -302,7 +334,8 @@
 
     refs.viewButtons.forEach((button) => {
       button.addEventListener("click", () => {
-        state.viewMode = button.dataset.viewMode;
+        const mode = button.dataset.viewMode;
+        state.viewMode = mode === "heatmap" ? "heatmap" : "week";
         persistState({ skipCloud: true });
         renderMainContent();
         renderHeader();
@@ -331,25 +364,6 @@
       weekCursor = startOfDay(new Date());
       monthCursor = startOfMonth(new Date());
       renderMainContent();
-    });
-
-    refs.quickStrengthBtn.addEventListener("click", () => {
-      const strengthHabit = getStrengthHabit();
-      if (!strengthHabit) {
-        showToast("Strength Training habit not found.");
-        return;
-      }
-      const key = todayKey();
-      toggleCompletion(strengthHabit.id, key);
-    });
-
-    refs.manageHabitsBtn.addEventListener("click", () => {
-      renderHabitEditor();
-      refs.habitsModal.showModal();
-    });
-
-    refs.closeHabitsBtn.addEventListener("click", () => {
-      refs.habitsModal.close();
     });
 
     refs.addHabitBtn.addEventListener("click", () => {
@@ -531,40 +545,11 @@
       refs.dayDetailsModal.close();
     });
 
-    refs.monthGrid.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action='toggle-month-habit']");
-      if (!button) {
-        return;
-      }
-
-      const habitId = button.dataset.habitId;
-      const dateKey = button.dataset.dateKey;
-      if (!habitId || !dateKey) {
-        return;
-      }
-
-      toggleCompletion(habitId, dateKey);
-    });
-
-    refs.habitHeatmap.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action='toggle-heatmap-habit']");
-      if (!button) {
-        return;
-      }
-
-      const habitId = button.dataset.habitId;
-      const dateKey = button.dataset.dateKey;
-      if (!habitId || !dateKey) {
-        return;
-      }
-
-      toggleCompletion(habitId, dateKey);
-    });
+    // Month heatmap is view-only now — no click handler.
 
     refs.openSyncBtn.addEventListener("click", () => {
       refs.syncModal.showModal();
       renderSyncPanel();
-      renderGoogleSignInButton();
     });
 
     refs.closeSyncBtn.addEventListener("click", () => {
@@ -633,9 +618,72 @@
   function renderAll() {
     renderProgressTop();
     renderHeader();
-    renderSidebarMode();
+    renderTodayPanel();
+    renderHabitEditor();
     renderMainContent();
     renderSyncPanel();
+    renderSignInBanner();
+  }
+
+  function openSidebar() {
+    if (!refs.sidebarDrawer) {
+      return;
+    }
+    refs.sidebarDrawer.hidden = false;
+    if (refs.drawerBackdrop) {
+      refs.drawerBackdrop.hidden = false;
+    }
+    // Re-render the drawer contents so they're current.
+    renderTodayPanel();
+    renderHabitEditor();
+    renderAuthIndicators();
+    renderGoogleSignInButton();
+    document.body.classList.add("drawer-open");
+  }
+
+  function closeSidebar() {
+    if (!refs.sidebarDrawer) {
+      return;
+    }
+    refs.sidebarDrawer.hidden = true;
+    if (refs.drawerBackdrop) {
+      refs.drawerBackdrop.hidden = true;
+    }
+    document.body.classList.remove("drawer-open");
+  }
+
+  function renderSignInBanner() {
+    if (!refs.signInBanner) {
+      return;
+    }
+    const canSignIn = Boolean(AUTH_CONFIG.googleClientId);
+    const idTokenValid =
+      Boolean(state.auth?.idToken) && !isJwtExpired(state.auth.idToken, 45);
+    const signedIn = idTokenValid || hasValidSessionToken_();
+    const dismissed = isSignInBannerDismissedToday_();
+    refs.signInBanner.hidden = !(canSignIn && !signedIn && !dismissed);
+  }
+
+  function isSignInBannerDismissedToday_() {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      return (
+        window.localStorage &&
+        window.localStorage.getItem("discipline_os_dismissed_signin_banner") === today
+      );
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function dismissSignInBannerForToday_() {
+    try {
+      if (!window.localStorage) return;
+      const today = new Date().toISOString().slice(0, 10);
+      window.localStorage.setItem("discipline_os_dismissed_signin_banner", today);
+    } catch (e) {
+      // ignore
+    }
   }
 
   function renderProgressTop() {
@@ -792,35 +840,11 @@
   }
 
   function renderHeader() {
-    refs.todayLabel.textContent = formatDateReadable(new Date());
-    if (state.viewMode === "week") {
-      refs.mainHeading.textContent = "Last 15 Days";
-      refs.mainSubheading.textContent = "Today first, then your previous 14 days of history.";
-    } else if (state.viewMode === "month") {
-      refs.mainHeading.textContent = "This Month";
-      refs.mainSubheading.textContent = "Calendar-driven daily execution and consistency.";
-    } else {
-      refs.mainHeading.textContent = "Monthly Heatmap";
-      refs.mainSubheading.textContent = "How each habit performed through this month.";
+    if (refs.todayLabel) {
+      refs.todayLabel.textContent = formatDateReadable(new Date());
     }
-    const strengthHabit = getStrengthHabit();
-    refs.quickStrengthBtn.disabled = !strengthHabit;
-    refs.quickStrengthBtn.textContent = strengthHabit ? `Toggle ${strengthHabit.name}` : "No Strength Habit";
-
     updateSyncIndicators();
     renderAuthIndicators();
-  }
-
-  function renderSidebarMode() {
-    refs.modeButtons.forEach((button) => {
-      button.classList.toggle("active", button.dataset.sidebarMode === state.sidebarMode);
-    });
-
-    refs.dailyPanel.classList.toggle("active", state.sidebarMode === "daily");
-    refs.analyticsPanel.classList.toggle("active", state.sidebarMode === "analytics");
-
-    renderTodayPanel();
-    renderAnalyticsPanel();
   }
 
   function renderTodayPanel() {
@@ -833,7 +857,7 @@
     if (!cornerstoneHabits.length && !regularHabits.length) {
       const empty = document.createElement("p");
       empty.className = "month-empty";
-      empty.textContent = "No habits yet. Click Manage Habits to add one.";
+      empty.textContent = "No habits yet. Open the menu to add one.";
       refs.todayChecklist.replaceChildren(empty);
     } else {
       fragment.appendChild(renderTodayGroup("Cornerstone Habits", cornerstoneHabits, today, key));
@@ -896,25 +920,10 @@
     return row;
   }
 
+  // Analytics panel was removed from the UI; the progress chart at the top
+  // plus the habit list in the drawer cover this need.
   function renderAnalyticsPanel() {
-    const habits = getActiveHabits();
-    const fragment = document.createDocumentFragment();
-
-    habits.forEach((habit) => {
-      const rate = getHabitCompletionRate(habit, 30);
-      const item = document.createElement("article");
-      item.className = "analytics-item";
-      item.innerHTML = `
-        <div class="analytics-item-head">
-          <strong>${habit.icon} ${escapeHtml(habit.name)}</strong>
-          <span>${Math.round(rate * 100)}%</span>
-        </div>
-        <div class="micro-track"><span style="width:${Math.round(rate * 100)}%"></span></div>
-      `;
-      fragment.appendChild(item);
-    });
-
-    refs.analyticsHabitList.replaceChildren(fragment);
+    return;
   }
 
   function renderHabitEditor() {
@@ -985,18 +994,16 @@
   }
 
   function renderMainContent() {
+    // Normalize state.viewMode: we only support "week" and "heatmap" now.
+    if (state.viewMode !== "week" && state.viewMode !== "heatmap") {
+      state.viewMode = "week";
+    }
     renderViewMode();
     if (state.viewMode === "week") {
       try {
         renderWeekTable();
       } catch (error) {
         refs.weekTableBody.innerHTML = `<tr><td colspan=\"99\">Could not render week table.</td></tr>`;
-      }
-    } else if (state.viewMode === "month") {
-      try {
-        renderMonthGrid();
-      } catch (error) {
-        refs.monthGrid.innerHTML = `<article class=\"month-day\"><p class=\"month-empty\">Could not render month view. Please refresh.</p></article>`;
       }
     } else {
       try {
@@ -1011,10 +1018,12 @@
     refs.viewButtons.forEach((button) => {
       button.classList.toggle("active", button.dataset.viewMode === state.viewMode);
     });
-
-    refs.weekView.classList.toggle("active", state.viewMode === "week");
-    refs.monthView.classList.toggle("active", state.viewMode === "month");
-    refs.heatmapView.classList.toggle("active", state.viewMode === "heatmap");
+    if (refs.weekView) {
+      refs.weekView.classList.toggle("active", state.viewMode === "week");
+    }
+    if (refs.heatmapView) {
+      refs.heatmapView.classList.toggle("active", state.viewMode === "heatmap");
+    }
   }
 
   function renderWeekTable() {
@@ -1225,177 +1234,163 @@
     refs.weekCards.replaceChildren(fragment);
   }
 
+  // The old calendar-style month grid (with swiping on mobile) was replaced
+  // by the view-only heatmap. Kept as a no-op for safety in case any stale
+  // reference survives.
   function renderMonthGrid() {
-    const monthStart = startOfMonth(monthCursor);
-    refs.periodLabel.textContent = monthStart.toLocaleDateString(undefined, {
-      month: "long",
-      year: "numeric",
-    });
-
-    const habits = getActiveHabits();
-    const gridStart = startOfWeek(monthStart, WEEK_STARTS_ON);
-    const fragment = document.createDocumentFragment();
-
-    orderedDays().forEach((day) => {
-      const header = document.createElement("p");
-      header.className = "month-header";
-      header.textContent = DAY_LABELS[day];
-      fragment.appendChild(header);
-    });
-
-    for (let cellIndex = 0; cellIndex < 42; cellIndex += 1) {
-      const date = addDays(gridStart, cellIndex);
-      const dateKey = toDateKey(date);
-      const dayCard = document.createElement("article");
-      dayCard.className = "month-day";
-      if (date.getMonth() !== monthStart.getMonth()) {
-        dayCard.classList.add("other-month");
-      }
-      if (dateKey === todayKey()) {
-        dayCard.classList.add("today");
-      }
-
-      const totals = getDayTotals(date);
-      const dueHabits = habits.filter((habit) => isScheduledDay(habit, date));
-      const topDueHabits = dueHabits.slice(0, 5);
-
-      const head = document.createElement("div");
-      head.className = "month-day-head";
-      head.innerHTML = `<strong>${date.getDate()}</strong><span>${Math.round(totals.rate * 100)}%</span>`;
-      dayCard.appendChild(head);
-
-      const list = document.createElement("div");
-      list.className = "month-habit-list";
-
-      if (!topDueHabits.length) {
-        const empty = document.createElement("p");
-        empty.className = "month-empty";
-        empty.textContent = "Rest day";
-        list.appendChild(empty);
-      }
-
-      topDueHabits.forEach((habit) => {
-        const done = isCompleted(habit.id, dateKey);
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `month-habit-btn${done ? " done" : ""}`;
-        button.style.setProperty("--habit-color", habit.color);
-        button.dataset.action = "toggle-month-habit";
-        button.dataset.habitId = habit.id;
-        button.dataset.dateKey = dateKey;
-        button.innerHTML = `<span class="tick">✓</span><span>${habit.icon} ${escapeHtml(habit.name)}</span>`;
-        list.appendChild(button);
-      });
-
-      if (dueHabits.length > topDueHabits.length) {
-        const more = document.createElement("p");
-        more.className = "month-empty";
-        more.textContent = `+${dueHabits.length - topDueHabits.length} more`;
-        list.appendChild(more);
-      }
-
-      dayCard.appendChild(list);
-
-      const miniTrack = document.createElement("div");
-      miniTrack.className = "segment-track";
-      renderSegmentTrack(miniTrack, totals.rate);
-      dayCard.appendChild(miniTrack);
-
-      fragment.appendChild(dayCard);
-    }
-
-    refs.monthGrid.replaceChildren(fragment);
+    return;
   }
 
+  // GitHub-style year-long contribution heatmap.
+  // 53 weeks × 7 days grid. Each cell's shade is based on that day's
+  // overall completion rate (completed / scheduled across all habits).
   function renderHabitHeatmap() {
-    const monthStart = startOfMonth(monthCursor);
-    refs.periodLabel.textContent = monthStart.toLocaleDateString(undefined, {
-      month: "long",
-      year: "numeric",
-    });
-
-    const habits = getActiveHabits();
-    const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
-
-    if (!habits.length) {
-      refs.habitHeatmap.innerHTML = `<p class="month-empty">No habits yet. Click Manage Habits to add one.</p>`;
+    if (!refs.habitHeatmap) {
       return;
     }
 
-    const wrapper = document.createElement("div");
-    wrapper.className = "heatmap-wrap";
-
-    const legend = document.createElement("div");
-    legend.className = "heatmap-legend";
-    legend.innerHTML = `
-      <span>Low</span>
-      <span class="heatmap-legend-cell rest" title="Not scheduled"></span>
-      <span class="heatmap-legend-cell missed" title="Scheduled but missed"></span>
-      <span class="heatmap-legend-cell done level-1" title="Completed"></span>
-      <span class="heatmap-legend-cell done level-2" title="Completed"></span>
-      <span class="heatmap-legend-cell done level-3" title="Completed"></span>
-      <span class="heatmap-legend-cell done level-4" title="Completed"></span>
-      <span>High</span>
-    `;
-    wrapper.appendChild(legend);
-
-    const table = document.createElement("div");
-    table.className = "heatmap-table";
-    table.style.setProperty("--heatmap-days", String(daysInMonth));
-
-    const headRow = document.createElement("div");
-    headRow.className = "heatmap-row heatmap-head-row";
-    headRow.innerHTML = `<p class="heatmap-habit-head">Habit</p>`;
-
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      const dayLabel = document.createElement("span");
-      dayLabel.className = "heatmap-day-label";
-      dayLabel.textContent = day % 2 === 0 || day === 1 || day === daysInMonth ? String(day) : "";
-      headRow.appendChild(dayLabel);
+    const habits = getActiveHabits();
+    if (!habits.length) {
+      refs.habitHeatmap.innerHTML = `<p class="month-empty">No habits yet. Open the menu to add one.</p>`;
+      if (refs.periodLabel) refs.periodLabel.textContent = "";
+      return;
     }
-    table.appendChild(headRow);
 
-    habits.forEach((habit) => {
-      const row = document.createElement("div");
-      row.className = "heatmap-row";
+    const today = startOfDay(new Date());
+    const TOTAL_WEEKS = 53;
 
-      const label = document.createElement("p");
-      label.className = "heatmap-habit-label";
-      const monthRate = getHabitCompletionRateForMonth(habit, monthStart, daysInMonth);
-      label.innerHTML = `
-        <span>${habit.icon} ${escapeHtml(habit.name)}</span>
-        <strong>${Math.round(monthRate * 100)}%</strong>
-      `;
-      row.appendChild(label);
+    // Align grid to Monday: find the Monday of today's week, then go back 52 weeks.
+    const todayDow = today.getDay(); // 0=Sun..6=Sat
+    const daysFromMonday = todayDow === 0 ? 6 : todayDow - 1;
+    const thisMonday = addDays(today, -daysFromMonday);
+    const gridStart = addDays(thisMonday, -(TOTAL_WEEKS - 1) * 7);
 
-      for (let day = 1; day <= daysInMonth; day += 1) {
-        const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
-        const dateKey = toDateKey(date);
-        const heat = getHabitHeatCell(habit, date, monthStart);
+    // Aggregate totals over the whole range to drive the header metrics.
+    let totalCompleted = 0;
+    let totalScheduled = 0;
+    let perfectDays = 0;
+    let activeDays = 0;
 
-        const cell = document.createElement("button");
-        cell.type = "button";
-        cell.className = "heatmap-cell";
-        cell.classList.add(heat.kind);
-        if (heat.kind === "done") {
-          cell.classList.add(`level-${heat.level}`);
-        }
-        if (dateKey === todayKey()) {
-          cell.classList.add("today");
-        }
-        cell.dataset.action = "toggle-heatmap-habit";
-        cell.dataset.habitId = habit.id;
-        cell.dataset.dateKey = dateKey;
-        cell.title = `${habit.name} • ${formatDateReadable(date)} • ${heat.label}`;
-        cell.setAttribute("aria-label", `${habit.name}, ${formatDateReadable(date)}, ${heat.label}`);
-        row.appendChild(cell);
+    // Build cell data
+    const cells = [];
+    for (let i = 0; i < TOTAL_WEEKS * 7; i += 1) {
+      const date = addDays(gridStart, i);
+      if (date > today) {
+        cells.push({ future: true, date });
+        continue;
       }
+      const totals = getDayTotals(date);
+      if (totals.scheduled > 0) {
+        totalScheduled += totals.scheduled;
+        totalCompleted += totals.completed;
+        activeDays += 1;
+        if (totals.completed === totals.scheduled) {
+          perfectDays += 1;
+        }
+      }
+      cells.push({ date, totals });
+    }
 
-      table.appendChild(row);
-    });
+    const overallRate = totalScheduled > 0 ? totalCompleted / totalScheduled : 0;
 
-    wrapper.appendChild(table);
-    refs.habitHeatmap.replaceChildren(wrapper);
+    if (refs.periodLabel) {
+      refs.periodLabel.textContent = `Last 365 days · ${perfectDays} perfect`;
+    }
+
+    // Cells HTML (column-first ordering matches CSS grid-auto-flow: column)
+    const cellsHtml = cells
+      .map((cell) => {
+        if (cell.future) {
+          return '<div class="heat-cell heat-future" aria-hidden="true"></div>';
+        }
+        const { totals, date } = cell;
+        let level;
+        if (totals.scheduled === 0) {
+          level = "rest";
+        } else if (totals.rate <= 0) {
+          level = "0";
+        } else if (totals.rate < 0.25) {
+          level = "1";
+        } else if (totals.rate < 0.5) {
+          level = "2";
+        } else if (totals.rate < 0.75) {
+          level = "3";
+        } else if (totals.rate < 1) {
+          level = "4";
+        } else {
+          level = "5";
+        }
+        const isToday = toDateKey(date) === todayKey();
+        const todayCls = isToday ? " heat-today" : "";
+        const title =
+          totals.scheduled === 0
+            ? `${formatDateWithWeekday(date)} — rest day`
+            : `${formatDateWithWeekday(date)} — ${totals.completed}/${totals.scheduled} (${Math.round(
+                totals.rate * 100,
+              )}%)`;
+        return `<div class="heat-cell heat-level-${level}${todayCls}" title="${escapeHtmlAttr(
+          title,
+        )}"></div>`;
+      })
+      .join("");
+
+    // Month labels — first week that starts each month, skip duplicates too close together.
+    const monthNames = [
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    const monthLabels = [];
+    let lastMonthLabelAt = -99;
+    for (let w = 0; w < TOTAL_WEEKS; w += 1) {
+      const firstCell = cells[w * 7];
+      if (!firstCell || !firstCell.date) continue;
+      const m = firstCell.date.getMonth();
+      // Label the week if it's the first week of a month AND far enough from the last label.
+      if (firstCell.date.getDate() <= 7 && w - lastMonthLabelAt >= 3) {
+        monthLabels.push({ col: w + 1, name: monthNames[m] });
+        lastMonthLabelAt = w;
+      }
+    }
+    const monthLabelsHtml = monthLabels
+      .map(
+        (ml) =>
+          `<span class="heat-month" style="grid-column-start:${ml.col}">${ml.name}</span>`,
+      )
+      .join("");
+
+    // Day labels on the left column: Mon, Wed, Fri (others empty for visual breathing room)
+    const dayLabels = ["Mon", "", "Wed", "", "Fri", "", ""];
+    const dayLabelsHtml = dayLabels
+      .map((l) => `<span class="heat-day">${l}</span>`)
+      .join("");
+
+    refs.habitHeatmap.innerHTML = `
+      <div class="heatmap-new">
+        <header class="heatmap-new-head">
+          <div>
+            <p class="heatmap-big-stat">${Math.round(overallRate * 100)}%</p>
+            <p class="heatmap-stat-label">overall completion · ${activeDays} scheduled days</p>
+          </div>
+          <div class="heatmap-new-legend">
+            <span class="muted">Less</span>
+            <span class="heat-cell heat-level-0"></span>
+            <span class="heat-cell heat-level-1"></span>
+            <span class="heat-cell heat-level-2"></span>
+            <span class="heat-cell heat-level-3"></span>
+            <span class="heat-cell heat-level-4"></span>
+            <span class="heat-cell heat-level-5"></span>
+            <span class="muted">More</span>
+          </div>
+        </header>
+        <div class="heatmap-months-row" style="grid-template-columns: repeat(${TOTAL_WEEKS}, 13px);">
+          ${monthLabelsHtml}
+        </div>
+        <div class="heatmap-body">
+          <div class="heatmap-day-col">${dayLabelsHtml}</div>
+          <div class="heatmap-cells">${cellsHtml}</div>
+        </div>
+      </div>
+    `;
   }
 
   function renderSyncPanel() {
@@ -1797,13 +1792,13 @@
   }
 
   function canUseCloudSync() {
-    return Boolean(
-      state.cloud.enabled &&
-        state.cloud.webAppUrl &&
-        state.auth &&
-        state.auth.idToken &&
-        !isJwtExpired(state.auth.idToken, 45),
-    );
+    if (!state.cloud.enabled || !state.cloud.webAppUrl || !state.auth) {
+      return false;
+    }
+    if (hasValidSessionToken_()) {
+      return true;
+    }
+    return Boolean(state.auth.idToken && !isJwtExpired(state.auth.idToken, 45));
   }
 
   function scheduleCloudPush(options = {}) {
@@ -1931,12 +1926,17 @@
         userId: localCloud.userId,
         lastSyncedAt: serverUpdatedAt || new Date().toISOString(),
       };
-      const preservedToken = isJwtExpired(localAuth.idToken, 45) ? "" : localAuth.idToken;
+      const preservedIdToken = isJwtExpired(localAuth.idToken, 45) ? "" : localAuth.idToken;
+      const preservedSessionToken = isSessionTokenExpiredAt_(localAuth.sessionExpiresAt, 60)
+        ? ""
+        : localAuth.sessionToken || "";
       state.auth = {
         ...state.auth,
-        email: preservedToken ? localAuth.email || "" : "",
-        idToken: preservedToken || "",
-        signedIn: Boolean(preservedToken),
+        email: preservedIdToken || preservedSessionToken ? localAuth.email || "" : "",
+        idToken: preservedIdToken || "",
+        sessionToken: preservedSessionToken,
+        sessionExpiresAt: preservedSessionToken ? localAuth.sessionExpiresAt || "" : "",
+        signedIn: Boolean(preservedIdToken) || Boolean(preservedSessionToken),
       };
 
       cloudRuntime.hasLocalChanges = false;
@@ -1994,12 +1994,17 @@
   }
 
   async function requestCloudApi(action, payload = {}) {
+    const useSession = hasValidSessionToken_() && action !== "exchange-token";
     const requestBody = {
       action,
-      idToken: state.auth.idToken,
       userId: state.cloud.userId,
       ...payload,
     };
+    if (useSession) {
+      requestBody.sessionToken = state.auth.sessionToken;
+    } else {
+      requestBody.idToken = state.auth.idToken;
+    }
 
     let response;
     try {
@@ -2024,10 +2029,19 @@
 
     if (!response.ok || !parsed || parsed.ok !== true) {
       const message = parsed?.error || `HTTP ${response.status}`;
-      if (/unauthorized/i.test(String(message))) {
-        state.auth.idToken = "";
-        state.auth.email = "";
-        state.auth.signedIn = false;
+      if (/unauthorized|session expired/i.test(String(message))) {
+        // Session token is bad or expired — clear it. If we still have a valid ID token,
+        // the next request can fall back to using that. Otherwise the user will be re-prompted.
+        if (useSession) {
+          state.auth.sessionToken = "";
+          state.auth.sessionExpiresAt = "";
+        } else {
+          state.auth.idToken = "";
+          state.auth.sessionToken = "";
+          state.auth.sessionExpiresAt = "";
+          state.auth.email = "";
+          state.auth.signedIn = false;
+        }
         persistState({ skipCloud: true, silent: true });
         renderAuthIndicators();
       }
@@ -2089,8 +2103,9 @@
     };
 
     next.version = Number(next.version) || template.version;
+    // Legacy field kept in state for compatibility with older clients, but unused.
     next.sidebarMode = next.sidebarMode === "analytics" ? "analytics" : "daily";
-    next.viewMode = ["week", "month", "heatmap"].includes(next.viewMode) ? next.viewMode : "week";
+    next.viewMode = ["week", "heatmap"].includes(next.viewMode) ? next.viewMode : "week";
 
     next.habits = Array.isArray(next.habits) ? next.habits : [];
     next.habits = next.habits
@@ -2136,14 +2151,22 @@
     };
     next.auth.email = String(next.auth.email || "").toLowerCase();
     next.auth.idToken = String(next.auth.idToken || "");
+    next.auth.sessionToken = String(next.auth.sessionToken || "");
+    next.auth.sessionExpiresAt = String(next.auth.sessionExpiresAt || "");
     if (isJwtExpired(next.auth.idToken, 45)) {
       next.auth.idToken = "";
     }
+    if (isSessionTokenExpiredAt_(next.auth.sessionExpiresAt, 60)) {
+      next.auth.sessionToken = "";
+      next.auth.sessionExpiresAt = "";
+    }
     if (AUTH_CONFIG.allowedEmail && next.auth.email && next.auth.email !== AUTH_CONFIG.allowedEmail) {
       next.auth.idToken = "";
+      next.auth.sessionToken = "";
+      next.auth.sessionExpiresAt = "";
       next.auth.email = "";
     }
-    next.auth.signedIn = Boolean(next.auth.idToken);
+    next.auth.signedIn = Boolean(next.auth.idToken) || Boolean(next.auth.sessionToken);
 
     return next;
   }
@@ -2172,6 +2195,8 @@
       auth: {
         email: "",
         idToken: "",
+        sessionToken: "",
+        sessionExpiresAt: "",
         signedIn: false,
       },
     };
@@ -2334,13 +2359,47 @@
     persistState({ skipCloud: true, silent: true });
     renderAuthIndicators();
 
+    // Exchange the short-lived Google ID token for a 90-day session token.
+    // We run this in the background; even if it fails we can still use the ID token for the next hour.
+    void exchangeIdTokenForSession();
+
     if (canUseCloudSync()) {
       void bootstrapCloudSyncNow();
     }
   }
 
+  async function exchangeIdTokenForSession() {
+    if (!state.auth.idToken || !state.cloud.webAppUrl) {
+      return;
+    }
+    try {
+      const response = await fetch(state.cloud.webAppUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "exchange-token",
+          idToken: state.auth.idToken,
+          userId: state.cloud.userId,
+        }),
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data && data.ok && data.sessionToken) {
+        state.auth.sessionToken = String(data.sessionToken);
+        state.auth.sessionExpiresAt = String(data.expiresAt || "");
+        state.auth.signedIn = true;
+        persistState({ skipCloud: true, silent: true });
+        renderAuthIndicators();
+      }
+    } catch (error) {
+      // Silent fail — ID token still works for the next hour.
+    }
+  }
+
   function signOutGoogle() {
     state.auth.idToken = "";
+    state.auth.sessionToken = "";
+    state.auth.sessionExpiresAt = "";
     state.auth.email = "";
     state.auth.signedIn = false;
     if (window.google && window.google.accounts && window.google.accounts.id) {
@@ -2353,16 +2412,23 @@
   }
 
   function renderAuthIndicators() {
-    const hadToken = Boolean(state.auth?.idToken);
-    const signedIn = Boolean(state.auth?.idToken) && !isJwtExpired(state.auth.idToken, 45);
+    const hadToken = Boolean(state.auth?.idToken) || Boolean(state.auth?.sessionToken);
+    const idTokenValid =
+      Boolean(state.auth?.idToken) && !isJwtExpired(state.auth.idToken, 45);
+    const sessionValid = hasValidSessionToken_();
+    const signedIn = idTokenValid || sessionValid;
     if (state.auth) {
       state.auth.signedIn = signedIn;
-      if (!signedIn) {
+      if (!idTokenValid && state.auth.idToken) {
         state.auth.idToken = "";
+      }
+      if (!sessionValid && state.auth.sessionToken) {
+        state.auth.sessionToken = "";
+        state.auth.sessionExpiresAt = "";
+      }
+      if (!signedIn && hadToken) {
         state.auth.email = "";
-        if (hadToken) {
-          saveStateLocally();
-        }
+        saveStateLocally();
       }
     }
     const email = signedIn ? state.auth?.email || "" : "";
@@ -2382,6 +2448,9 @@
     if (refs.signOutBtn) {
       refs.signOutBtn.disabled = !signedIn;
     }
+
+    // Keep the sign-in banner in sync with auth state.
+    renderSignInBanner();
   }
 
   function setBootOverlay(isVisible, message) {
@@ -2451,6 +2520,24 @@
     }
     const now = Math.floor(Date.now() / 1000);
     return exp <= now + Math.max(0, Number(skewSeconds) || 0);
+  }
+
+  function isSessionTokenExpiredAt_(expiresAtIso, skewSeconds = 0) {
+    if (!expiresAtIso) {
+      return true;
+    }
+    const expMs = Date.parse(expiresAtIso);
+    if (!Number.isFinite(expMs)) {
+      return true;
+    }
+    return expMs <= Date.now() + Math.max(0, Number(skewSeconds) || 0) * 1000;
+  }
+
+  function hasValidSessionToken_() {
+    return (
+      Boolean(state.auth && state.auth.sessionToken) &&
+      !isSessionTokenExpiredAt_(state.auth.sessionExpiresAt, 60)
+    );
   }
 
   function normalizeDays(days) {

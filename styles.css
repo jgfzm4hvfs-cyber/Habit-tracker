@@ -46,7 +46,22 @@ body {
     radial-gradient(circle at 8% 5%, rgba(255, 255, 255, 0.85), transparent 36%),
     radial-gradient(circle at 94% 8%, rgba(164, 197, 255, 0.4), transparent 34%),
     linear-gradient(145deg, #e4e5eb, #dfe1e8 45%, #e8eaef);
-  padding: 1.15rem;
+  padding: 0;
+  min-height: 100vh;
+}
+
+body.drawer-open {
+  overflow: hidden;
+}
+
+.app-column {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0.9rem 1rem 1.4rem;
+  display: grid;
+  gap: 0.9rem;
+  position: relative;
+  z-index: 1;
 }
 
 h1,
@@ -96,24 +111,228 @@ textarea {
   background: rgba(35, 138, 89, 0.2);
 }
 
+/* Legacy .app-shell kept as a no-op (replaced by .app-column). */
 .app-shell {
-  position: relative;
-  z-index: 1;
-  max-width: 1600px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 1rem;
+  display: contents;
 }
 
+/* =============================================================
+   Top bar
+   ============================================================= */
+.top-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  padding: 0;
+}
+
+.icon-btn:hover {
+  background: #fff;
+}
+
+.top-bar-title {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.top-bar-title .eyebrow {
+  font-size: 0.62rem;
+}
+
+.today-label {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+/* =============================================================
+   Sign-in banner
+   ============================================================= */
+.sign-in-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.8rem 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(37, 99, 210, 0.28);
+  background: linear-gradient(135deg, rgba(37, 99, 210, 0.1), rgba(37, 99, 210, 0.03));
+  flex-wrap: wrap;
+}
+
+.sign-in-banner[hidden] {
+  display: none;
+}
+
+.sign-in-banner-text {
+  flex: 1;
+  min-width: 180px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.sign-in-banner-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.sign-in-banner .btn {
+  padding: 0.42rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+/* =============================================================
+   Status footer
+   ============================================================= */
+.status-footer {
+  display: flex;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.8rem 0 0.2rem;
+  flex-wrap: wrap;
+}
+
+.status-footer .sync-badge {
+  font-size: 0.72rem;
+  padding: 0.24rem 0.55rem;
+  opacity: 0.85;
+}
+
+/* =============================================================
+   Sidebar drawer
+   ============================================================= */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 14, 22, 0.42);
+  backdrop-filter: blur(2px);
+  z-index: 50;
+  animation: drawer-fade-in 0.22s ease both;
+}
+
+.drawer-backdrop[hidden] {
+  display: none;
+}
+
+@keyframes drawer-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.sidebar-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(380px, 92vw);
+  background: var(--surface-strong);
+  border-right: 1px solid var(--line);
+  box-shadow: 0 40px 80px -30px rgba(12, 12, 19, 0.4);
+  z-index: 51;
+  padding: 1rem 1.1rem 1.5rem;
+  overflow-y: auto;
+  display: grid;
+  gap: 1.1rem;
+  align-content: start;
+  animation: drawer-slide-in 0.28s ease both;
+}
+
+.sidebar-drawer[hidden] {
+  display: none;
+}
+
+@keyframes drawer-slide-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.drawer-head h2 {
+  font-size: 1.2rem;
+}
+
+.drawer-section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.drawer-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.drawer-section-head h3 {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.add-habit-details {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.add-habit-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.2rem 0;
+  color: var(--primary);
+  list-style: none;
+}
+
+.add-habit-details[open] summary {
+  margin-bottom: 0.4rem;
+}
+
+.add-habit-details .habit-create {
+  display: grid;
+  gap: 0.4rem;
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.google-signin-wrap {
+  margin: 0.2rem 0;
+  min-height: 40px;
+}
+
+/* =============================================================
+   Progress top (stacked, full-width in column)
+   ============================================================= */
 .progress-top {
-  position: relative;
-  z-index: 1;
-  max-width: 1600px;
-  margin: 0 auto 1rem;
   padding: 1.1rem 1.3rem;
   display: grid;
   gap: 0.9rem;
+  margin: 0;
 }
 
 .progress-top-head {
@@ -1110,71 +1329,164 @@ textarea {
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.72);
   padding: 0;
-  cursor: pointer;
+  display: inline-block;
 }
 
-.heatmap-cell.missed {
-  background: rgba(185, 69, 81, 0.3);
-  border-color: rgba(177, 69, 79, 0.42);
+/* =============================================================
+   GitHub-style contribution heatmap (last 365 days)
+   ============================================================= */
+.heatmap-new {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem 1.25rem;
+  min-width: fit-content;
 }
 
-.heatmap-cell.rest {
-  background: rgba(110, 116, 130, 0.12);
-  opacity: 0.75;
+.heatmap-new-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
-.heatmap-cell.done.level-1 {
-  background: #cde9d7;
-  border-color: #9ec9af;
+.heatmap-big-stat {
+  font-family: var(--font-display);
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+  margin: 0;
 }
 
-.heatmap-cell.done.level-2 {
-  background: #8fd0a9;
-  border-color: #5daf82;
+.heatmap-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-soft);
+  font-weight: 600;
+  margin-top: 0.25rem;
 }
 
-.heatmap-cell.done.level-3 {
-  background: #49a86f;
-  border-color: #368454;
+.heatmap-new-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.72rem;
+  color: var(--text-soft);
+  font-weight: 600;
 }
 
-.heatmap-cell.done.level-4 {
-  background: #26784a;
-  border-color: #1f623c;
+.heatmap-new-legend .heat-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
 }
 
-.heatmap-cell.today {
-  outline: 1px solid #11121a;
+.heatmap-new-legend .muted {
+  margin: 0 3px;
+}
+
+.heatmap-months-row {
+  display: grid;
+  column-gap: 3px;
+  padding-left: 28px;
+  font-size: 9px;
+  color: var(--text-soft);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  height: 12px;
+}
+
+.heat-month {
+  grid-row: 1;
+  white-space: nowrap;
+}
+
+.heatmap-body {
+  display: flex;
+  gap: 5px;
+  align-items: flex-start;
+}
+
+.heatmap-day-col {
+  display: grid;
+  grid-template-rows: repeat(7, 13px);
+  row-gap: 3px;
+  font-size: 9px;
+  width: 23px;
+  color: var(--text-soft);
+  font-weight: 700;
+  text-transform: uppercase;
+  align-items: center;
+  line-height: 1;
+}
+
+.heatmap-cells {
+  display: grid;
+  grid-template-rows: repeat(7, 13px);
+  grid-auto-flow: column;
+  grid-auto-columns: 13px;
+  gap: 3px;
+}
+
+.heat-cell {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: #ebedf0;
+  transition: transform 120ms ease;
+}
+
+.heat-cell:hover {
+  transform: scale(1.35);
+  z-index: 2;
+  position: relative;
+}
+
+.heat-level-0 {
+  background: #ebedf0;
+}
+
+.heat-level-rest {
+  background: #f4f5f8;
+}
+
+.heat-level-1 {
+  background: #c6e48b;
+}
+
+.heat-level-2 {
+  background: #7bc96f;
+}
+
+.heat-level-3 {
+  background: #239a3b;
+}
+
+.heat-level-4 {
+  background: #196127;
+}
+
+.heat-level-5 {
+  background: #0e3d18;
+}
+
+.heat-future {
+  background: transparent;
+  border: 1px dashed rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+}
+
+.heat-today {
+  outline: 1.5px solid var(--primary);
   outline-offset: 1px;
+  border-radius: 3px;
 }
 
-.heatmap-legend-cell.missed {
-  background: rgba(185, 69, 81, 0.3);
-  border-color: rgba(177, 69, 79, 0.42);
-}
-
-.heatmap-legend-cell.rest {
-  background: rgba(110, 116, 130, 0.12);
-}
-
-.heatmap-legend-cell.done.level-1 {
-  background: #cde9d7;
-  border-color: #9ec9af;
-}
-
-.heatmap-legend-cell.done.level-2 {
-  background: #8fd0a9;
-  border-color: #5daf82;
-}
-
-.heatmap-legend-cell.done.level-3 {
-  background: #49a86f;
-  border-color: #368454;
-}
-
-.heatmap-legend-cell.done.level-4 {
-  background: #26784a;
-  border-color: #1f623c;
+/* Container scrolls horizontally on narrow viewports */
+#heatmapView .heatmap-scroll {
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
 }
 
 .day-details-modal {

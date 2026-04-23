@@ -13,122 +13,149 @@
       href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Work+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260422a" />
+    <link rel="stylesheet" href="./styles.css?v=20260423d" />
   </head>
   <body>
     <div class="bg-shape bg-shape-a" aria-hidden="true"></div>
     <div class="bg-shape bg-shape-b" aria-hidden="true"></div>
 
-    <section id="progressTop" class="progress-top card" aria-label="Progress overview">
-      <header class="progress-top-head">
-        <div>
-          <p class="eyebrow">Progress Overview</p>
-          <h2>Weekly-Goal Completion</h2>
-          <p id="progressTopSubheading" class="muted">
-            100% = you hit your weekly goal. Bars are pro-rated to each habit's target.
-          </p>
-        </div>
-        <div class="progress-range-switch" role="tablist" aria-label="Progress range">
-          <button class="progress-range-btn active" type="button" data-progress-range="7">
-            7-day
-          </button>
-          <button class="progress-range-btn" type="button" data-progress-range="30">
-            30-day
-          </button>
+    <div class="app-column">
+      <!-- Top bar: hamburger + title + date -->
+      <header class="top-bar">
+        <button id="openSidebarBtn" class="icon-btn" type="button" aria-label="Open menu">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+        </button>
+        <div class="top-bar-title">
+          <p class="eyebrow">Discipline OS</p>
+          <p id="todayLabel" class="today-label"></p>
         </div>
       </header>
-      <div id="progressGraphList" class="progress-graph-list"></div>
-    </section>
 
-    <div class="app-shell">
-      <aside class="sidebar card" aria-label="Sidebar">
-        <header class="sidebar-head">
-          <p class="eyebrow">Control System</p>
-          <h1>Discipline OS</h1>
-          <p class="muted">A structure for consistency, not motivation.</p>
-        </header>
+      <!-- Sign-in banner (only shown when not signed in) -->
+      <div id="signInBanner" class="sign-in-banner" hidden>
+        <span class="sign-in-banner-text">🔒 Sign in with Google so your habits sync across devices.</span>
+        <div class="sign-in-banner-actions">
+          <button id="signInBannerBtn" class="btn primary" type="button">Sign in</button>
+          <button id="dismissSignInBannerBtn" class="btn ghost" type="button" aria-label="Dismiss">Later</button>
+        </div>
+      </div>
 
-        <nav class="mode-switch" aria-label="Sidebar mode">
-          <button class="mode-btn active" data-sidebar-mode="daily">Daily Habits</button>
-          <button class="mode-btn" data-sidebar-mode="analytics">Analytics</button>
-        </nav>
-
-        <section id="dailyPanel" class="side-panel active" aria-label="Daily panel">
-          <div class="section-head">
-            <h2>Today</h2>
-            <p id="todayLabel" class="muted"></p>
-          </div>
-          <div id="todayChecklist" class="today-list"></div>
-          <div class="day-progress-wrap">
-            <div class="segment-track" id="todaySegmentTrack"></div>
-            <p id="todaySummaryLabel" class="summary-label">0%</p>
-          </div>
-        </section>
-
-        <section id="analyticsPanel" class="side-panel" aria-label="Analytics panel">
-          <div class="section-head">
-            <h2>Analytics</h2>
-            <p class="muted">Last 30 days</p>
-          </div>
-          <div id="analyticsHabitList" class="analytics-list"></div>
-        </section>
-
-        <footer class="sidebar-actions">
-          <button id="openSyncBtn" class="btn secondary">Cloud Sync</button>
-        </footer>
-      </aside>
-
-      <main class="main">
-        <header class="main-header card">
+      <!-- 1. Line chart (first thing) -->
+      <section id="progressTop" class="progress-top card" aria-label="Progress overview">
+        <header class="progress-top-head">
           <div>
-            <p class="eyebrow">Habit Operations Center</p>
-            <h2 id="mainHeading">This Week</h2>
-            <p id="mainSubheading" class="muted"></p>
+            <p class="eyebrow">Progress</p>
+            <h2>Weekly-Goal Completion</h2>
+            <p id="progressTopSubheading" class="muted">
+              Rolling 7-day and 30-day completion. 100% = weekly goal hit.
+            </p>
           </div>
-          <div class="header-tools">
-            <span id="syncBadge" class="sync-badge local">Local only</span>
-            <span id="authBadge" class="sync-badge local">Not signed in</span>
-            <button id="manageHabitsBtn" class="btn secondary">Manage Habits</button>
-            <button id="quickStrengthBtn" class="btn primary">Toggle Strength Training</button>
+          <div class="progress-range-switch" role="tablist" aria-label="Progress range">
+            <button class="progress-range-btn active" type="button" data-progress-range="7">7-day</button>
+            <button class="progress-range-btn" type="button" data-progress-range="30">30-day</button>
           </div>
         </header>
+        <div id="progressGraphList" class="progress-graph-list"></div>
+      </section>
 
-        <section class="toolbar card" aria-label="View controls">
-          <div class="view-switch" role="tablist" aria-label="Main view switch">
-            <button class="view-btn active" data-view-mode="week">Week Table</button>
-            <button class="view-btn" data-view-mode="month">Full Month</button>
-            <button class="view-btn" data-view-mode="heatmap">Month Heatmap</button>
-          </div>
-          <div class="nav-tools">
-            <button id="prevPeriodBtn" class="btn ghost">Previous</button>
-            <button id="todayBtn" class="btn ghost">Today</button>
-            <button id="nextPeriodBtn" class="btn ghost">Next</button>
-            <p id="periodLabel" class="period-label"></p>
-          </div>
-        </section>
+      <!-- 2. View toolbar + week table -->
+      <section class="toolbar card" aria-label="View controls">
+        <div class="view-switch" role="tablist" aria-label="Main view switch">
+          <button class="view-btn active" data-view-mode="week" type="button">Week</button>
+          <button class="view-btn" data-view-mode="heatmap" type="button">Month</button>
+        </div>
+        <div class="nav-tools">
+          <button id="prevPeriodBtn" class="btn ghost" type="button" aria-label="Previous">‹</button>
+          <button id="todayBtn" class="btn ghost" type="button">Today</button>
+          <button id="nextPeriodBtn" class="btn ghost" type="button" aria-label="Next">›</button>
+          <p id="periodLabel" class="period-label"></p>
+        </div>
+      </section>
 
-        <section id="weekView" class="main-view active card" aria-label="Weekly table">
-          <div class="table-scroll">
-            <table class="week-table">
-              <thead id="weekTableHead"></thead>
-              <tbody id="weekTableBody"></tbody>
-            </table>
-          </div>
-          <div id="weekCards" class="week-cards"></div>
-        </section>
+      <section id="weekView" class="main-view active card" aria-label="Weekly table">
+        <div class="table-scroll">
+          <table class="week-table">
+            <thead id="weekTableHead"></thead>
+            <tbody id="weekTableBody"></tbody>
+          </table>
+        </div>
+        <div id="weekCards" class="week-cards"></div>
+      </section>
 
-        <section id="monthView" class="main-view card" aria-label="Monthly calendar">
-          <div id="monthGrid" class="month-grid"></div>
-        </section>
+      <!-- 3. Monthly view-only grid (memento mori style) -->
+      <section id="heatmapView" class="main-view card" aria-label="Monthly habit grid">
+        <div class="heatmap-scroll">
+          <div id="habitHeatmap" class="habit-heatmap"></div>
+        </div>
+      </section>
 
-        <section id="heatmapView" class="main-view card" aria-label="Monthly habit heatmap">
-          <div class="heatmap-scroll">
-            <div id="habitHeatmap" class="habit-heatmap"></div>
-          </div>
-        </section>
-      </main>
+      <!-- Bottom: subtle status indicators -->
+      <footer class="status-footer">
+        <span id="authBadge" class="sync-badge local">Not signed in</span>
+        <span id="syncBadge" class="sync-badge local">Local only</span>
+      </footer>
     </div>
 
+    <!-- Sidebar drawer (slides in from left) -->
+    <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+    <aside id="sidebarDrawer" class="sidebar-drawer" aria-label="Menu" hidden>
+      <header class="drawer-head">
+        <h2>Menu</h2>
+        <button id="closeSidebarBtn" class="icon-btn" type="button" aria-label="Close menu">✕</button>
+      </header>
+
+      <!-- Today's quick-log -->
+      <section class="drawer-section">
+        <header class="drawer-section-head">
+          <h3>Today</h3>
+          <p id="todaySummaryLabel" class="summary-label muted">0%</p>
+        </header>
+        <div id="todayChecklist" class="today-list"></div>
+        <div class="segment-track" id="todaySegmentTrack"></div>
+      </section>
+
+      <!-- Habits -->
+      <section class="drawer-section">
+        <header class="drawer-section-head">
+          <h3>Habits</h3>
+        </header>
+        <div id="habitEditorList" class="habit-editor-list"></div>
+        <details class="add-habit-details">
+          <summary>＋ Add new habit</summary>
+          <div class="habit-create">
+            <label for="newHabitName">Name</label>
+            <input id="newHabitName" type="text" placeholder="E.g. Read 20 min" />
+
+            <label for="newHabitEmoji">Emoji</label>
+            <input id="newHabitEmoji" type="text" placeholder="📖" />
+
+            <label for="newHabitType">Type</label>
+            <select id="newHabitType">
+              <option value="cornerstone">Cornerstone (daily)</option>
+              <option value="regular" selected>Regular</option>
+            </select>
+
+            <label for="newHabitTarget">Days per week</label>
+            <input id="newHabitTarget" type="number" min="1" max="7" value="3" />
+
+            <button id="addHabitBtn" class="btn primary" type="button">Add habit</button>
+          </div>
+        </details>
+      </section>
+
+      <!-- Account -->
+      <section class="drawer-section">
+        <header class="drawer-section-head">
+          <h3>Account</h3>
+        </header>
+        <p id="authStatusText" class="muted">Google sign-in required for sync.</p>
+        <div id="googleSignInButton" class="google-signin-wrap"></div>
+        <button id="signOutBtn" class="btn ghost" type="button">Sign out</button>
+        <button id="openSyncBtn" class="btn secondary" type="button">Cloud sync settings</button>
+      </section>
+    </aside>
+
+    <!-- Boot overlay -->
     <div id="bootOverlay" class="boot-overlay" aria-live="polite">
       <div class="boot-overlay-card">
         <span class="boot-spinner" aria-hidden="true"></span>
@@ -136,11 +163,12 @@
       </div>
     </div>
 
+    <!-- Cloud Sync settings dialog (advanced) -->
     <dialog id="syncModal" class="sync-modal">
       <form id="syncForm" method="dialog">
         <header class="section-head">
           <h2>Google Sheets Sync</h2>
-          <p class="muted">Use one sheet for both iPhone and Mac</p>
+          <p class="muted">Use one sheet for both iPhone and Mac.</p>
         </header>
 
         <label for="cloudEnabled" class="inline-label">
@@ -158,12 +186,6 @@
         <label for="cloudUserId">User ID</label>
         <input id="cloudUserId" type="text" value="default" placeholder="default" />
 
-        <div class="auth-panel">
-          <p id="authStatusText" class="muted">Google sign-in required for sync.</p>
-          <div id="googleSignInButton"></div>
-          <button id="signOutBtn" class="btn ghost" type="button">Sign out</button>
-        </div>
-
         <div class="button-row">
           <button id="saveSyncBtn" class="btn primary" type="button">Save</button>
           <button id="testSyncBtn" class="btn secondary" type="button">Test</button>
@@ -174,62 +196,13 @@
         <p id="syncStatusText" class="sync-badge local">Local only</p>
         <p id="syncLastText" class="muted">Last sync: never</p>
 
-        <section class="notify-section">
-          <header class="section-head">
-            <h2>Daily Reminder (ntfy)</h2>
-            <p class="muted">
-              Free push notifications via ntfy.sh. Fires at 8:00 PM only on days you haven't
-              logged any habits.
-            </p>
-          </header>
-          <label for="ntfyTopicValue">Your ntfy topic (subscribe to this in the ntfy app)</label>
-          <input id="ntfyTopicValue" type="text" readonly value="disc-os-habits-k9m2p7x4r8n5j3vq6t1f" />
-          <p class="muted">
-            Install the free <strong>ntfy</strong> app on your phone, tap "+" and paste the topic
-            above. Notifications will appear titled "Discipline OS" and tap to open your tracker.
-          </p>
-        </section>
-
         <div class="button-row modal-footer">
           <button id="closeSyncBtn" class="btn ghost" type="button">Close</button>
         </div>
       </form>
     </dialog>
 
-    <dialog id="habitsModal" class="sync-modal habits-modal">
-      <form id="habitsForm" method="dialog">
-        <header class="section-head">
-          <h2>Manage Habits</h2>
-          <p class="muted">Cornerstone on top, regular below</p>
-        </header>
-
-        <div id="habitEditorList" class="habit-editor-list"></div>
-
-        <section class="habit-create">
-          <label for="newHabitName">New habit name</label>
-          <input id="newHabitName" type="text" placeholder="Example: Read 20 min" />
-
-          <label for="newHabitEmoji">Emoji</label>
-          <input id="newHabitEmoji" type="text" placeholder="📖" />
-
-          <label for="newHabitType">Type</label>
-          <select id="newHabitType">
-            <option value="cornerstone">Cornerstone (daily)</option>
-            <option value="regular" selected>Regular</option>
-          </select>
-
-          <label for="newHabitTarget">Days per week</label>
-          <input id="newHabitTarget" type="number" min="1" max="7" value="3" />
-
-          <button id="addHabitBtn" class="btn primary" type="button">Add Habit</button>
-        </section>
-
-        <div class="button-row modal-footer">
-          <button id="closeHabitsBtn" class="btn ghost" type="button">Close</button>
-        </div>
-      </form>
-    </dialog>
-
+    <!-- Day details dialog -->
     <dialog id="dayDetailsModal" class="sync-modal day-details-modal">
       <form id="dayDetailsForm" method="dialog">
         <header class="section-head">
@@ -260,6 +233,6 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="./cloud-config.js?v=20260214"></script>
-    <script src="./app.js?v=20260422a" defer></script>
+    <script src="./app.js?v=20260423d" defer></script>
   </body>
 </html>
