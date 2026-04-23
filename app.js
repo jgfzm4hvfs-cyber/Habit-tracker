@@ -283,6 +283,16 @@
   }
 
   function bindEvents() {
+    // Scroll-aware top bar (glass gets more opaque on scroll).
+    const topBar = document.querySelector(".top-bar");
+    if (topBar) {
+      const updateScrolled = () => {
+        topBar.classList.toggle("scrolled", window.scrollY > 8);
+      };
+      updateScrolled();
+      window.addEventListener("scroll", updateScrolled, { passive: true });
+    }
+
     // Sidebar drawer open/close
     if (refs.openSidebarBtn) {
       refs.openSidebarBtn.addEventListener("click", () => openSidebar());
@@ -797,8 +807,8 @@
       <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" class="progress-chart-svg" role="img" aria-label="Weekly goal completion chart: 7-day and 30-day rolling averages per habit">
         ${gridlines}
         ${axis}
-        <polyline points="${points30}" class="chart-line chart-line-30" fill="none"></polyline>
-        <polyline points="${points7}" class="chart-line chart-line-7" fill="none"></polyline>
+        <polyline points="${points30}" pathLength="100" class="chart-line chart-line-30" fill="none"></polyline>
+        <polyline points="${points7}" pathLength="100" class="chart-line chart-line-7" fill="none"></polyline>
         ${dots30}
         ${dots7}
         ${xLabels}
@@ -1299,9 +1309,14 @@
 
     // Cells HTML (column-first ordering matches CSS grid-auto-flow: column)
     const cellsHtml = cells
-      .map((cell) => {
+      .map((cell, i) => {
+        // Stagger delay based on week-column index, so reveal sweeps
+        // left-to-right like a wave.
+        const colIdx = Math.floor(i / 7);
+        const delayMs = colIdx * 7;
+        const styleDelay = ` style="animation-delay:${delayMs}ms"`;
         if (cell.future) {
-          return '<div class="heat-cell heat-future" aria-hidden="true"></div>';
+          return `<div class="heat-cell heat-future heat-reveal" aria-hidden="true"${styleDelay}></div>`;
         }
         const { totals, date } = cell;
         let level;
@@ -1328,9 +1343,9 @@
             : `${formatDateWithWeekday(date)} — ${totals.completed}/${totals.scheduled} (${Math.round(
                 totals.rate * 100,
               )}%)`;
-        return `<div class="heat-cell heat-level-${level}${todayCls}" title="${escapeHtmlAttr(
+        return `<div class="heat-cell heat-level-${level} heat-reveal${todayCls}" title="${escapeHtmlAttr(
           title,
-        )}"></div>`;
+        )}"${styleDelay}></div>`;
       })
       .join("");
 
@@ -2462,7 +2477,17 @@
       refs.bootOverlayText.textContent = message;
     }
 
-    refs.bootOverlay.hidden = !isVisible;
+    if (isVisible) {
+      refs.bootOverlay.hidden = false;
+      refs.bootOverlay.classList.remove("hiding");
+    } else {
+      refs.bootOverlay.classList.add("hiding");
+      window.setTimeout(() => {
+        if (refs.bootOverlay.classList.contains("hiding")) {
+          refs.bootOverlay.hidden = true;
+        }
+      }, 260);
+    }
   }
 
   function showToast(message) {

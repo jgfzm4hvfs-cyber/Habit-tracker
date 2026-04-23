@@ -24,9 +24,38 @@
 
   --shadow-soft: 0 14px 32px -22px rgba(22, 22, 31, 0.44);
   --shadow-hard: 0 35px 80px -40px rgba(12, 12, 19, 0.5);
+  --shadow-lift: 0 24px 48px -26px rgba(22, 22, 31, 0.38);
 
   --transition-fast: 140ms ease;
   --transition-mid: 220ms ease;
+
+  /* Tuned timing curves — these are what makes things feel "native". */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+
+  --dur-quick: 140ms;
+  --dur-med: 260ms;
+  --dur-slow: 420ms;
+}
+
+/* Respect user's motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Smoother default scroll behaviour. */
+html {
+  scroll-behavior: smooth;
 }
 
 * {
@@ -62,6 +91,29 @@ body.drawer-open {
   gap: 0.9rem;
   position: relative;
   z-index: 1;
+}
+
+/* Page assembles on first load — subtle staggered slide-up. */
+.app-column > * {
+  animation: section-rise 520ms var(--ease-out-expo) both;
+}
+.app-column > .top-bar { animation: bar-drop-in 480ms var(--ease-out-expo) both; }
+.app-column > .sign-in-banner { animation-delay: 60ms; }
+.app-column > #progressTop { animation-delay: 100ms; }
+.app-column > .toolbar { animation-delay: 160ms; }
+.app-column > #weekView { animation-delay: 220ms; }
+.app-column > #heatmapView { animation-delay: 220ms; }
+.app-column > .status-footer { animation-delay: 280ms; }
+
+@keyframes section-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 h1,
@@ -117,13 +169,36 @@ textarea {
 }
 
 /* =============================================================
-   Top bar
+   Top bar (sticky, frosted glass on scroll)
    ============================================================= */
 .top-bar {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.2rem 0;
+  padding: 0.7rem 1rem;
+  margin: -0.9rem -1rem 0;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(232, 233, 238, 0.72);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  transition:
+    box-shadow var(--dur-med) var(--ease-out-quint),
+    background var(--dur-med) var(--ease-smooth);
+  animation: bar-drop-in 480ms var(--ease-out-expo) both;
+}
+
+.top-bar.scrolled {
+  box-shadow:
+    0 1px 0 rgba(25, 25, 35, 0.06),
+    0 10px 24px -18px rgba(12, 12, 19, 0.35);
+  background: rgba(232, 233, 238, 0.88);
+}
+
+@keyframes bar-drop-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .icon-btn {
@@ -136,12 +211,23 @@ textarea {
   border: 1px solid var(--line);
   color: var(--text);
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition:
+    transform var(--dur-quick) var(--ease-out-quint),
+    background var(--dur-quick) var(--ease-smooth),
+    box-shadow var(--dur-med) var(--ease-out-quint);
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .icon-btn:hover {
   background: #fff;
+  transform: scale(1.05);
+  box-shadow: var(--shadow-soft);
+}
+
+.icon-btn:active {
+  transform: scale(0.92);
+  transition-duration: 60ms;
 }
 
 .top-bar-title {
@@ -221,9 +307,10 @@ textarea {
   position: fixed;
   inset: 0;
   background: rgba(12, 14, 22, 0.42);
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   z-index: 50;
-  animation: drawer-fade-in 0.22s ease both;
+  animation: drawer-fade-in 260ms var(--ease-out-expo) both;
 }
 
 .drawer-backdrop[hidden] {
@@ -247,10 +334,12 @@ textarea {
   z-index: 51;
   padding: 1rem 1.1rem 1.5rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   gap: 1.1rem;
   align-content: start;
-  animation: drawer-slide-in 0.28s ease both;
+  animation: drawer-slide-in 360ms var(--ease-out-expo) both;
+  will-change: transform;
 }
 
 .sidebar-drawer[hidden] {
@@ -258,8 +347,33 @@ textarea {
 }
 
 @keyframes drawer-slide-in {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
+  0% {
+    transform: translateX(-102%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* Drawer sections fade/slide in with a tiny stagger so it feels like
+   the panel is assembling itself. */
+.sidebar-drawer .drawer-section {
+  animation: drawer-section-in 480ms var(--ease-out-expo) both;
+}
+.sidebar-drawer .drawer-section:nth-child(1) { animation-delay: 40ms; }
+.sidebar-drawer .drawer-section:nth-child(2) { animation-delay: 90ms; }
+.sidebar-drawer .drawer-section:nth-child(3) { animation-delay: 140ms; }
+.sidebar-drawer .drawer-section:nth-child(4) { animation-delay: 190ms; }
+
+@keyframes drawer-section-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .drawer-head {
@@ -367,7 +481,15 @@ textarea {
   font-size: 0.85rem;
   cursor: pointer;
   color: var(--text-soft);
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--dur-quick) var(--ease-smooth),
+    color var(--dur-quick) var(--ease-smooth),
+    transform var(--dur-quick) var(--ease-out-quint);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.progress-range-btn:active {
+  transform: scale(0.94);
 }
 
 .progress-range-btn.active {
@@ -432,21 +554,83 @@ textarea {
   fill: none;
   stroke-linejoin: round;
   stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: chart-line-draw 900ms var(--ease-out-expo) forwards;
 }
 
 .chart-line-7 {
   stroke: #2563d2;
+  animation-delay: 260ms;
 }
 
 .chart-line-30 {
   stroke: #2f8b5d;
   stroke-dasharray: 5 4;
   opacity: 0.9;
+  animation: chart-line-draw-dashed 900ms var(--ease-out-expo) forwards;
+  animation-delay: 120ms;
+}
+
+@keyframes chart-line-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes chart-line-draw-dashed {
+  from {
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dasharray: 5 4;
+    stroke-dashoffset: 0;
+  }
 }
 
 .chart-dot {
   stroke: #ffffff;
   stroke-width: 1.5;
+  opacity: 0;
+  animation: chart-dot-pop 420ms var(--ease-spring) forwards;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.chart-dot-30 {
+  animation-delay: 500ms;
+}
+
+.chart-dot-7 {
+  animation-delay: 680ms;
+}
+
+@keyframes chart-dot-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.chart-y-label,
+.chart-x-label,
+.chart-x-icon {
+  opacity: 0;
+  animation: chart-label-fade 400ms var(--ease-out-expo) forwards;
+  animation-delay: 400ms;
+}
+
+@keyframes chart-label-fade {
+  to { opacity: 1; }
 }
 
 .chart-dot-7 {
@@ -585,7 +769,18 @@ textarea {
   display: grid;
   place-items: center;
   background: rgba(235, 237, 242, 0.78);
-  backdrop-filter: blur(5px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition:
+    opacity 260ms var(--ease-out-expo),
+    backdrop-filter 260ms var(--ease-out-expo);
+}
+
+.boot-overlay.hiding {
+  opacity: 0;
+  pointer-events: none;
+  backdrop-filter: blur(0);
+  -webkit-backdrop-filter: blur(0);
 }
 
 .boot-overlay[hidden] {
@@ -764,6 +959,27 @@ textarea {
   font-size: 0.8rem;
   font-weight: 800;
   color: transparent;
+  transition:
+    background var(--dur-quick) var(--ease-smooth),
+    color var(--dur-quick) var(--ease-smooth),
+    transform 120ms var(--ease-spring);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.today-item .mark-btn:hover,
+.week-card-item .mark-btn:hover {
+  transform: scale(1.08);
+}
+
+.today-item .mark-btn:active,
+.week-card-item .mark-btn:active {
+  transform: scale(0.86);
+  transition-duration: 60ms;
+}
+
+.today-item .mark-btn.done,
+.week-card-item .mark-btn.done {
+  animation: toggle-pop 380ms var(--ease-spring);
 }
 
 .today-item .mark-btn.done,
@@ -910,6 +1126,17 @@ textarea {
   padding: 0.5rem 0.9rem;
   font-weight: 700;
   cursor: pointer;
+  transition:
+    background var(--dur-quick) var(--ease-smooth),
+    color var(--dur-quick) var(--ease-smooth),
+    border-color var(--dur-quick) var(--ease-smooth),
+    transform var(--dur-quick) var(--ease-out-quint);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.view-btn:active {
+  transform: scale(0.95);
+  transition-duration: 60ms;
 }
 
 .view-btn.active {
@@ -937,6 +1164,7 @@ textarea {
 
 .main-view.active {
   display: block;
+  animation: view-enter 320ms var(--ease-out-expo) both;
 }
 
 .table-scroll {
@@ -1027,7 +1255,32 @@ textarea {
   align-items: center;
   justify-content: center;
   line-height: 1;
-  transition: var(--transition-fast);
+  transition:
+    background var(--dur-quick) var(--ease-smooth),
+    color var(--dur-quick) var(--ease-smooth),
+    border-color var(--dur-quick) var(--ease-smooth),
+    transform 120ms var(--ease-spring),
+    box-shadow var(--dur-quick) var(--ease-smooth);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.habit-toggle:hover {
+  transform: scale(1.08);
+}
+
+.habit-toggle:active {
+  transform: scale(0.88);
+  transition-duration: 60ms;
+}
+
+.habit-toggle.done {
+  animation: toggle-pop 380ms var(--ease-spring);
+}
+
+@keyframes toggle-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.22); }
+  100% { transform: scale(1); }
 }
 
 .habit-toggle.done {
@@ -1332,6 +1585,17 @@ textarea {
   display: inline-block;
 }
 
+@keyframes view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 /* =============================================================
    GitHub-style contribution heatmap (last 365 days)
    ============================================================= */
@@ -1434,13 +1698,53 @@ textarea {
   height: 13px;
   border-radius: 3px;
   background: #ebedf0;
-  transition: transform 120ms ease;
+  transition: transform 160ms var(--ease-out-expo);
+  transform-origin: center;
+}
+
+.heat-cell.heat-reveal {
+  animation: heat-reveal 420ms var(--ease-out-expo) backwards;
+}
+
+@keyframes heat-reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .heat-cell:hover {
-  transform: scale(1.35);
+  transform: scale(1.4);
   z-index: 2;
   position: relative;
+  box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.25);
+}
+
+.heatmap-new-head {
+  opacity: 0;
+  animation: heat-head-fade 320ms var(--ease-out-expo) forwards;
+  animation-delay: 120ms;
+}
+
+.heatmap-months-row {
+  opacity: 0;
+  animation: heat-head-fade 320ms var(--ease-out-expo) forwards;
+  animation-delay: 200ms;
+}
+
+.heatmap-day-col {
+  opacity: 0;
+  animation: heat-head-fade 320ms var(--ease-out-expo) forwards;
+  animation-delay: 240ms;
+}
+
+@keyframes heat-head-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .heat-level-0 {
@@ -1543,12 +1847,37 @@ textarea {
 
 .btn {
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 10px;
   padding: 0.52rem 0.86rem;
   font-weight: 700;
   cursor: pointer;
   text-decoration: none;
-  transition: var(--transition-fast);
+  transition:
+    transform var(--dur-quick) var(--ease-out-quint),
+    background var(--dur-quick) var(--ease-smooth),
+    border-color var(--dur-quick) var(--ease-smooth),
+    box-shadow var(--dur-med) var(--ease-out-quint),
+    color var(--dur-quick) var(--ease-smooth);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  will-change: transform;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+}
+
+.btn:active {
+  transform: translateY(0) scale(0.97);
+  transition-duration: 60ms;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .btn.primary {
@@ -1570,8 +1899,6 @@ textarea {
   border-color: var(--line);
 }
 
-.btn:hover,
-.mode-btn:hover,
 .view-btn:hover,
 .month-habit-btn:hover {
   transform: translateY(-1px);
@@ -1584,6 +1911,29 @@ textarea {
   color: inherit;
   width: min(96vw, 560px);
   box-shadow: var(--shadow-hard);
+  padding: 0;
+}
+
+.sync-modal[open] {
+  animation: modal-scale-in 320ms var(--ease-out-expo);
+}
+
+.sync-modal::backdrop {
+  background: rgba(12, 14, 22, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: drawer-fade-in 260ms var(--ease-out-expo) both;
+}
+
+@keyframes modal-scale-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.94) translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .sync-modal::backdrop {
