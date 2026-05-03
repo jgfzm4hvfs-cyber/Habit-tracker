@@ -2919,7 +2919,6 @@ textarea {
 
 .ex-chart-svg {
   width: 100%;
-  min-width: 360px;
   height: auto;
   max-height: 260px;
   display: block;

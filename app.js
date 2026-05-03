@@ -351,8 +351,8 @@
     exStatMonthCount: byId("exStatMonthCount"),
     exStatExerciseCount: byId("exStatExerciseCount"),
     exWorkoutCalendar: byId("exWorkoutCalendar"),
-    exProgressionExerciseSelect: byId("exProgressionExerciseSelect"),
     exProgressionChart: byId("exProgressionChart"),
+    exProgressionLegend: byId("exProgressionLegend"),
 
     // Weight
     exWeightInput: byId("exWeightInput"),
@@ -3665,15 +3665,8 @@
     syncWorkoutTypeButtons();
     setDateInputDefault(refs.exWorkoutDateInput);
     populateExerciseSelect(refs.exWorkoutExerciseSelect);
-    populateExerciseSelect(refs.exProgressionExerciseSelect);
     populateExerciseSelect(refs.exWorkoutEditExercise);
     renderExCustomExerciseList();
-    if (!exUi.selectedProgressionExerciseId && state.exercise.exercises.length) {
-      exUi.selectedProgressionExerciseId = state.exercise.exercises[0].id;
-    }
-    if (refs.exProgressionExerciseSelect) {
-      refs.exProgressionExerciseSelect.value = exUi.selectedProgressionExerciseId;
-    }
     renderExE1rmPreview();
     renderExWorkoutStats();
     renderExWorkoutCalendar();
@@ -3775,16 +3768,20 @@
   function renderExWorkoutCalendar() {
     if (!refs.exWorkoutCalendar) return;
     const ex = state.exercise;
-    const days = lastNDateKeys(30);
+    // Reverse-chronological so today sits top-left and 30-days-ago is at the
+    // bottom — keeps the most relevant info above the fold.
+    const days = lastNDateKeys(30).slice().reverse();
     const todayK = todayKey();
     const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const cells = days
       .map((dKey, idx) => {
-        // Insert a "Month" pill the first time we see day 01 OR at the very
-        // first cell — anchors the calendar to a real calendar boundary.
+        // In reverse-chrono order we get a new month every time the previous
+        // cell's month differs from this one — anchors the calendar to a real
+        // calendar boundary regardless of which day-of-month falls there.
         const dayNum = dKey.slice(8);
         const monthIdx = Number(dKey.slice(5, 7)) - 1;
-        const showMonthPill = idx === 0 || dayNum === "01";
+        const prevMonthIdx = idx > 0 ? Number(days[idx - 1].slice(5, 7)) - 1 : -1;
+        const showMonthPill = idx === 0 || monthIdx !== prevMonthIdx;
         const monthPill = showMonthPill
           ? `<span class="ex-day-month-pill">${monthShort[monthIdx]}</span>`
           : "";
@@ -3816,57 +3813,68 @@
   function renderExProgressionChart() {
     if (!refs.exProgressionChart) return;
     const ex = state.exercise;
-    const exId = exUi.selectedProgressionExerciseId;
-    const exercise = ex.exercises.find((e) => e.id === exId);
 
-    if (!exercise) {
-      refs.exProgressionChart.innerHTML =
-        '<p class="ex-empty">Pick an exercise above to see its progression.</p>';
-      return;
-    }
-
-    const points = [];
+    // Group all workouts by exercise → ordered points.
+    const byExercise = {};
     Object.keys(ex.workouts).forEach((dKey) => {
-      const list = ex.workouts[dKey] || [];
-      list.forEach((w) => {
-        if (w.exerciseId === exId) {
-          points.push({ dateKey: dKey, e1rm: w.e1rm, weight: w.weight, reps: w.reps });
-        }
+      (ex.workouts[dKey] || []).forEach((w) => {
+        if (!byExercise[w.exerciseId]) byExercise[w.exerciseId] = [];
+        byExercise[w.exerciseId].push({
+          dateKey: dKey,
+          e1rm: w.e1rm,
+          weight: w.weight,
+          reps: w.reps,
+        });
       });
     });
-    points.sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
+    const exercisesWithData = ex.exercises.filter(
+      (e) => byExercise[e.id] && byExercise[e.id].length > 0,
+    );
 
-    if (points.length === 0) {
-      refs.exProgressionChart.innerHTML = `<p class="ex-empty">No data yet for ${escapeHtml(exercise.name)}. Log a workout to start tracking.</p>`;
+    if (exercisesWithData.length === 0) {
+      refs.exProgressionChart.innerHTML =
+        '<p class="ex-empty">No workouts logged yet. Log one to start tracking strength.</p>';
+      if (refs.exProgressionLegend) refs.exProgressionLegend.innerHTML = "";
       return;
     }
+
+    exercisesWithData.forEach((e) => {
+      byExercise[e.id].sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
+    });
+
+    // Date span from earliest to latest workout (across ALL exercises).
+    const allDates = new Set();
+    Object.values(byExercise).forEach((pts) => pts.forEach((p) => allDates.add(p.dateKey)));
+    const sortedDates = Array.from(allDates).sort();
+    const minDate = sortedDates[0];
+    const maxDate = sortedDates[sortedDates.length - 1];
+    const totalDays = Math.max(1, daysBetween(minDate, maxDate));
+
+    // Y range across all exercises so lines share a common scale.
+    const allValues = [];
+    Object.values(byExercise).forEach((pts) => pts.forEach((p) => allValues.push(p.e1rm)));
+    const minV = Math.min(...allValues);
+    const maxV = Math.max(...allValues);
+    const span = Math.max(2, maxV - minV);
+    const yMin = Math.floor((minV - span * 0.15) / 5) * 5;
+    const yMax = Math.ceil((maxV + span * 0.15) / 5) * 5;
 
     const padT = 16;
     const padR = 14;
     const padB = 28;
     const padL = 44;
-    const plotH = 180;
-    const minPlotW = 280;
-    const stepW = Math.max(34, Math.min(70, 600 / Math.max(1, points.length - 1)));
-    const plotW = Math.max(minPlotW, (points.length - 1) * stepW || minPlotW);
+    const plotH = 200;
+    const plotW = 520;
     const width = padL + plotW + padR;
     const height = padT + plotH + padB;
-
-    const values = points.map((p) => p.e1rm);
-    const minV = Math.min(...values);
-    const maxV = Math.max(...values);
-    const span = Math.max(2, maxV - minV);
-    const yMin = Math.floor((minV - span * 0.15) / 5) * 5;
-    const yMax = Math.ceil((maxV + span * 0.15) / 5) * 5;
     const yAt = (v) => padT + plotH - ((v - yMin) / Math.max(1, yMax - yMin)) * plotH;
-    const xAt = (i) => (points.length === 1 ? padL + plotW / 2 : padL + (i / (points.length - 1)) * plotW);
+    const xAt = (dKey) =>
+      totalDays === 0
+        ? padL + plotW / 2
+        : padL + (daysBetween(minDate, dKey) / totalDays) * plotW;
 
-    // Y gridlines (5 ticks)
     const ticks = [];
-    for (let t = 0; t <= 4; t += 1) {
-      const v = yMin + ((yMax - yMin) * t) / 4;
-      ticks.push(v);
-    }
+    for (let t = 0; t <= 4; t += 1) ticks.push(yMin + ((yMax - yMin) * t) / 4);
     const grid = ticks
       .map((v) => {
         const y = yAt(v);
@@ -3875,38 +3883,82 @@
       })
       .join("");
 
-    const linePoints = points.map((p, i) => `${xAt(i)},${yAt(p.e1rm)}`).join(" ");
-    const dots = points
-      .map(
-        (p, i) =>
-          `<circle cx="${xAt(i)}" cy="${yAt(p.e1rm)}" r="3.4" class="ex-chart-dot ex-chart-dot-strength"><title>${p.dateKey} · ${formatNumber(p.weight)}×${p.reps} → ${formatNumber(roundTo(p.e1rm, 1))} kg e1RM</title></circle>`,
-      )
-      .join("");
+    const colorFor = (exId) => {
+      const idx = ex.exercises.findIndex((e) => e.id === exId);
+      return HABIT_COLOR_PALETTE[idx % HABIT_COLOR_PALETTE.length];
+    };
 
-    // X labels (first, last, and a few in middle if many)
-    const labelIndexes = new Set([0, points.length - 1]);
-    if (points.length > 4) {
-      labelIndexes.add(Math.floor(points.length / 3));
-      labelIndexes.add(Math.floor((points.length * 2) / 3));
-    }
-    const xLabels = points
-      .map((p, i) => {
-        if (!labelIndexes.has(i)) return "";
-        return `<text x="${xAt(i)}" y="${padT + plotH + 16}" class="chart-x-label" text-anchor="middle">${p.dateKey.slice(5)}</text>`;
+    // One line + dots per exercise.
+    const lines = exercisesWithData
+      .map((e) => {
+        const pts = byExercise[e.id];
+        const color = colorFor(e.id);
+        const linePoints = pts.map((p) => `${xAt(p.dateKey)},${yAt(p.e1rm)}`).join(" ");
+        const linePart =
+          pts.length > 1
+            ? `<polyline points="${linePoints}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />`
+            : "";
+        const dots = pts
+          .map(
+            (p) =>
+              `<circle cx="${xAt(p.dateKey)}" cy="${yAt(p.e1rm)}" r="3.4" fill="${color}" stroke="#fff" stroke-width="1.4"><title>${escapeHtml(e.name)} · ${p.dateKey} · ${formatNumber(p.weight)}×${p.reps} → ${formatNumber(roundTo(p.e1rm, 1))} kg e1RM</title></circle>`,
+          )
+          .join("");
+        return linePart + dots;
       })
       .join("");
 
+    // X labels: first date, last date, and a midpoint or two if range is wide.
+    const xLabelDates = new Set([minDate, maxDate]);
+    if (totalDays > 14) {
+      const mid = addDaysToKey(minDate, Math.floor(totalDays / 2));
+      xLabelDates.add(mid);
+    }
+    const xLabels = Array.from(xLabelDates)
+      .map(
+        (d) =>
+          `<text x="${xAt(d)}" y="${padT + plotH + 16}" class="chart-x-label" text-anchor="middle">${d.slice(5)}</text>`,
+      )
+      .join("");
+
     refs.exProgressionChart.innerHTML = `
-      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" class="ex-chart-svg" role="img" aria-label="Strength progression for ${escapeHtmlAttr(exercise.name)}">
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" class="ex-chart-svg" role="img" aria-label="Strength progression for all exercises">
         ${grid}
         <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + plotH}" class="chart-axis"></line>
         <line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" class="chart-axis"></line>
-        <polyline points="${linePoints}" class="ex-chart-line ex-chart-line-strength" fill="none"></polyline>
-        ${dots}
+        ${lines}
         ${xLabels}
       </svg>
-      <p class="ex-chart-caption muted">Estimated 1RM (kg) over time · ${points.length} workout${points.length === 1 ? "" : "s"} logged</p>
     `;
+
+    if (refs.exProgressionLegend) {
+      refs.exProgressionLegend.innerHTML = exercisesWithData
+        .map(
+          (e) =>
+            `<span class="ex-legend-item"><span class="ex-legend-swatch" style="background:${colorFor(e.id)}"></span>${escapeHtml(e.name)}</span>`,
+        )
+        .join("");
+    }
+  }
+
+  function daysBetween(aKey, bKey) {
+    const ay = Number(aKey.slice(0, 4));
+    const am = Number(aKey.slice(5, 7)) - 1;
+    const ad = Number(aKey.slice(8, 10));
+    const by = Number(bKey.slice(0, 4));
+    const bm = Number(bKey.slice(5, 7)) - 1;
+    const bd = Number(bKey.slice(8, 10));
+    const a = Date.UTC(ay, am, ad);
+    const b = Date.UTC(by, bm, bd);
+    return Math.round((b - a) / (24 * 3600 * 1000));
+  }
+
+  function addDaysToKey(dKey, n) {
+    const y = Number(dKey.slice(0, 4));
+    const m = Number(dKey.slice(5, 7)) - 1;
+    const d = Number(dKey.slice(8, 10));
+    const dt = new Date(Date.UTC(y, m, d + n));
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
   }
 
   // ---------------------------------------------------------------------------
@@ -4103,10 +4155,6 @@
       if (!btn) return;
       handleDeleteCustomExercise(btn.dataset.deleteExercise);
     });
-    refs.exProgressionExerciseSelect?.addEventListener("change", () => {
-      exUi.selectedProgressionExerciseId = refs.exProgressionExerciseSelect.value;
-      renderExProgressionChart();
-    });
     refs.exWorkoutCalendar?.addEventListener("click", (e) => {
       const cell = e.target.closest("[data-edit-workout]");
       if (!cell) return;
@@ -4252,7 +4300,6 @@
     }
     refs.exNewExerciseName.value = "";
     populateExerciseSelect(refs.exWorkoutExerciseSelect);
-    populateExerciseSelect(refs.exProgressionExerciseSelect);
     populateExerciseSelect(refs.exWorkoutEditExercise);
     refs.exWorkoutExerciseSelect.value = created.id;
     renderExCustomExerciseList();
@@ -4275,16 +4322,12 @@
     if (!window.confirm(`Delete the exercise "${ex.name}"?`)) return;
     exDeleteExercise(exerciseId);
     populateExerciseSelect(refs.exWorkoutExerciseSelect);
-    populateExerciseSelect(refs.exProgressionExerciseSelect);
     populateExerciseSelect(refs.exWorkoutEditExercise);
     renderExCustomExerciseList();
     if (refs.exStatExerciseCount) {
       refs.exStatExerciseCount.textContent = String(state.exercise.exercises.length);
     }
-    if (exUi.selectedProgressionExerciseId === exerciseId) {
-      exUi.selectedProgressionExerciseId = state.exercise.exercises[0]?.id || "";
-      renderExProgressionChart();
-    }
+    renderExProgressionChart();
     showToast(`Exercise "${ex.name}" deleted.`);
   }
 
