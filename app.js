@@ -310,10 +310,12 @@
     exTodayCaloriesGoal: byId("exTodayCaloriesGoal"),
     exTodayCaloriesBar: byId("exTodayCaloriesBar"),
     exTodayCaloriesRemain: byId("exTodayCaloriesRemain"),
+    exTodayCaloriesCheck: byId("exTodayCaloriesCheck"),
     exTodayProtein: byId("exTodayProtein"),
     exTodayProteinGoal: byId("exTodayProteinGoal"),
     exTodayProteinBar: byId("exTodayProteinBar"),
     exTodayProteinRemain: byId("exTodayProteinRemain"),
+    exTodayProteinCheck: byId("exTodayProteinCheck"),
     exWeekWorkouts: byId("exWeekWorkouts"),
     exWeekWorkoutsSub: byId("exWeekWorkoutsSub"),
     exCurrentWeight: byId("exCurrentWeight"),
@@ -339,6 +341,7 @@
     exNewExerciseName: byId("exNewExerciseName"),
     exSaveNewExerciseBtn: byId("exSaveNewExerciseBtn"),
     exAddExerciseDetails: byId("exAddExerciseDetails"),
+    exCustomExerciseList: byId("exCustomExerciseList"),
     exWorkoutWeightInput: byId("exWorkoutWeightInput"),
     exWorkoutRepsInput: byId("exWorkoutRepsInput"),
     exWorkoutDateInput: byId("exWorkoutDateInput"),
@@ -3228,6 +3231,26 @@
     return true;
   }
 
+  function exDeleteExercise(exerciseId) {
+    const ex = state.exercise;
+    const idx = ex.exercises.findIndex((e) => e.id === exerciseId);
+    if (idx < 0) return false;
+    if (ex.exercises[idx].builtin) return false;
+    ex.exercises.splice(idx, 1);
+    persistState();
+    return true;
+  }
+
+  function countWorkoutsForExercise(exerciseId) {
+    let n = 0;
+    Object.values(state.exercise.workouts).forEach((list) => {
+      list.forEach((w) => {
+        if (w.exerciseId === exerciseId) n += 1;
+      });
+    });
+    return n;
+  }
+
   function exAddExercise(name) {
     const ex = state.exercise;
     const trimmed = String(name || "").trim();
@@ -3375,7 +3398,8 @@
     if (!ex || !refs.exTodayCalories) return;
 
     if (refs.exSnapshotDateLabel) {
-      refs.exSnapshotDateLabel.textContent = formatDateReadable(new Date());
+      // "Sun, May 3" — the year is implicit; eyebrow already says "Today".
+      refs.exSnapshotDateLabel.textContent = formatDateShort(new Date());
     }
 
     const today = todayKey();
@@ -3387,28 +3411,37 @@
     refs.exTodayCalories.textContent = formatNumber(totals.calories);
     refs.exTodayCaloriesGoal.textContent = formatNumber(goalCal);
     refs.exTodayCaloriesBar.style.width = `${Math.min(100, (totals.calories / goalCal) * 100)}%`;
+    const calMet = totals.calories >= goalCal;
+    refs.exTodayCaloriesBar.classList.toggle("goal-met", calMet);
+    if (refs.exTodayCaloriesCheck) refs.exTodayCaloriesCheck.hidden = !calMet;
     const calRemain = goalCal - totals.calories;
     refs.exTodayCaloriesRemain.textContent =
-      calRemain >= 0
+      calRemain > 0
         ? `${formatNumber(calRemain)} kcal left`
-        : `${formatNumber(Math.abs(calRemain))} kcal over`;
+        : calRemain === 0
+          ? "Goal hit"
+          : `${formatNumber(Math.abs(calRemain))} kcal over`;
 
     refs.exTodayProtein.textContent = formatNumber(totals.protein);
     refs.exTodayProteinGoal.textContent = formatNumber(goalPro);
     refs.exTodayProteinBar.style.width = `${Math.min(100, (totals.protein / goalPro) * 100)}%`;
+    const proMet = totals.protein >= goalPro;
+    refs.exTodayProteinBar.classList.toggle("goal-met", proMet);
+    if (refs.exTodayProteinCheck) refs.exTodayProteinCheck.hidden = !proMet;
     const proRemain = goalPro - totals.protein;
     refs.exTodayProteinRemain.textContent =
-      proRemain >= 0
+      proRemain > 0
         ? `${formatNumber(roundTo(proRemain, 1))} g protein left`
-        : `${formatNumber(roundTo(Math.abs(proRemain), 1))} g over`;
+        : proRemain === 0
+          ? "Goal hit"
+          : `${formatNumber(roundTo(Math.abs(proRemain), 1))} g over`;
 
-    // Workouts this week (Mon–Sun).
-    const weekStart = startOfWeek(new Date(), WEEK_STARTS_ON);
+    // Workouts in the last 7 days (rolling, matches the stats row).
     let weekCount = 0;
     let bestE1rmThisWeek = 0;
     let bestE1rmExercise = "";
     for (let i = 0; i < 7; i += 1) {
-      const dKey = toDateKey(addDays(weekStart, i));
+      const dKey = dateKeyDaysAgo(i);
       const list = ex.workouts[dKey] || [];
       weekCount += list.length;
       list.forEach((w) => {
@@ -3574,7 +3607,6 @@
       <line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" class="chart-axis"></line>
       <line x1="${padL}" y1="${goalLineY}" x2="${padL + plotW}" y2="${goalLineY}" class="ex-chart-goalline"></line>
       <text x="${padL - 6}" y="${goalLineY + 3}" class="chart-y-label" text-anchor="end">${formatNumber(goalCal)}</text>
-      <text x="${padL - 6}" y="${padT + 3}" class="chart-y-label" text-anchor="end">kcal</text>
     `;
 
     const bars = dayData
@@ -3621,7 +3653,6 @@
         ${bars}
         ${proteinLine}
         ${proteinDots}
-        <text x="${padL + plotW + 6}" y="${padT + 3}" class="chart-y-label" text-anchor="start">${formatNumber(maxPro)}g</text>
         ${xLabels}
       </svg>
     `;
@@ -3636,6 +3667,7 @@
     populateExerciseSelect(refs.exWorkoutExerciseSelect);
     populateExerciseSelect(refs.exProgressionExerciseSelect);
     populateExerciseSelect(refs.exWorkoutEditExercise);
+    renderExCustomExerciseList();
     if (!exUi.selectedProgressionExerciseId && state.exercise.exercises.length) {
       exUi.selectedProgressionExerciseId = state.exercise.exercises[0].id;
     }
@@ -3653,6 +3685,31 @@
       btn.classList.toggle("active", btn.dataset.workoutType === exUi.selectedWorkoutType);
       btn.style.setProperty("--type-color", WORKOUT_TYPE_COLORS[btn.dataset.workoutType]);
     });
+  }
+
+  function renderExCustomExerciseList() {
+    if (!refs.exCustomExerciseList) return;
+    const custom = state.exercise.exercises.filter((e) => !e.builtin);
+    if (custom.length === 0) {
+      refs.exCustomExerciseList.innerHTML = "";
+      return;
+    }
+    refs.exCustomExerciseList.innerHTML = `
+      <p class="ex-custom-list-head">Your custom exercises</p>
+      ${custom
+        .map((e) => {
+          const used = countWorkoutsForExercise(e.id);
+          const usedNote = used
+            ? `<span class="ex-custom-used muted">${used} workout${used === 1 ? "" : "s"}</span>`
+            : `<span class="ex-custom-used muted">unused</span>`;
+          return `<div class="ex-custom-row">
+            <span class="ex-custom-name">${escapeHtml(e.name)}</span>
+            ${usedNote}
+            <button type="button" class="ex-custom-del" data-delete-exercise="${escapeHtmlAttr(e.id)}" aria-label="Delete ${escapeHtmlAttr(e.name)}">✕</button>
+          </div>`;
+        })
+        .join("")}
+    `;
   }
 
   function populateExerciseSelect(select) {
@@ -3686,33 +3743,55 @@
 
   function renderExWorkoutStats() {
     const ex = state.exercise;
-    const weekStart = startOfWeek(new Date(), WEEK_STARTS_ON);
-    let weekCount = 0;
-    for (let i = 0; i < 7; i += 1) {
-      const dKey = toDateKey(addDays(weekStart, i));
-      weekCount += (ex.workouts[dKey] || []).length;
-    }
-    const monthStart = startOfMonth(new Date());
-    const todayDate = startOfDay(new Date());
-    let monthCount = 0;
-    for (let d = new Date(monthStart); d <= todayDate; d = addDays(d, 1)) {
-      const dKey = toDateKey(d);
-      monthCount += (ex.workouts[dKey] || []).length;
-    }
-    if (refs.exStatWeekCount) refs.exStatWeekCount.textContent = String(weekCount);
-    if (refs.exStatMonthCount) refs.exStatMonthCount.textContent = String(monthCount);
+    // Rolling windows so "Last 30d" is always >= "Last 7d", regardless of where
+    // we are in the calendar month (avoids the "5 this week / 3 this month"
+    // confusion that calendar-month windows produce early in the month).
+    const week7 = countWorkoutsInLastNDays(ex, 7);
+    const month30 = countWorkoutsInLastNDays(ex, 30);
+    if (refs.exStatWeekCount) refs.exStatWeekCount.textContent = String(week7);
+    if (refs.exStatMonthCount) refs.exStatMonthCount.textContent = String(month30);
     if (refs.exStatExerciseCount) refs.exStatExerciseCount.textContent = String(ex.exercises.length);
+    setUnitText(refs.exStatWeekCount, week7 === 1 ? "workout" : "workouts");
+    setUnitText(refs.exStatMonthCount, month30 === 1 ? "workout" : "workouts");
+  }
+
+  function countWorkoutsInLastNDays(ex, n) {
+    let count = 0;
+    for (let i = 0; i < n; i += 1) {
+      const dKey = dateKeyDaysAgo(i);
+      count += (ex.workouts[dKey] || []).length;
+    }
+    return count;
+  }
+
+  function setUnitText(valueEl, text) {
+    if (!valueEl) return;
+    const parent = valueEl.parentElement;
+    if (!parent) return;
+    const unit = parent.querySelector(".ex-stat-unit");
+    if (unit) unit.textContent = text;
   }
 
   function renderExWorkoutCalendar() {
     if (!refs.exWorkoutCalendar) return;
     const ex = state.exercise;
     const days = lastNDateKeys(30);
+    const todayK = todayKey();
+    const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const cells = days
-      .map((dKey) => {
+      .map((dKey, idx) => {
+        // Insert a "Month" pill the first time we see day 01 OR at the very
+        // first cell — anchors the calendar to a real calendar boundary.
+        const dayNum = dKey.slice(8);
+        const monthIdx = Number(dKey.slice(5, 7)) - 1;
+        const showMonthPill = idx === 0 || dayNum === "01";
+        const monthPill = showMonthPill
+          ? `<span class="ex-day-month-pill">${monthShort[monthIdx]}</span>`
+          : "";
         const list = ex.workouts[dKey] || [];
+        const todayClass = dKey === todayK ? " is-today" : "";
         if (list.length === 0) {
-          return `<div class="ex-day-cell empty"><span class="ex-day-num">${dKey.slice(8)}</span></div>`;
+          return `<div class="ex-day-cell empty${todayClass}">${monthPill}<span class="ex-day-num">${dayNum}</span></div>`;
         }
         const best = list.reduce((a, b) => (b.e1rm > a.e1rm ? b : a), list[0]);
         const exercise = ex.exercises.find((e) => e.id === best.exerciseId);
@@ -3720,8 +3799,9 @@
         const color = WORKOUT_TYPE_COLORS[best.type];
         const typeLabel = WORKOUT_TYPE_LABELS[best.type];
         return `
-          <button class="ex-day-cell filled" type="button" data-edit-workout="${escapeHtmlAttr(dKey)}|${escapeHtmlAttr(best.id)}" style="--type-color:${color}">
-            <span class="ex-day-num">${dKey.slice(8)}</span>
+          <button class="ex-day-cell filled${todayClass}" type="button" data-edit-workout="${escapeHtmlAttr(dKey)}|${escapeHtmlAttr(best.id)}" style="--type-color:${color}">
+            ${monthPill}
+            <span class="ex-day-num">${dayNum}</span>
             <span class="ex-day-type">${typeLabel}</span>
             <span class="ex-day-pr">${formatNumber(best.weight)}×${best.reps}</span>
             <span class="ex-day-e1rm">${formatNumber(roundTo(best.e1rm, 0))}kg e1RM</span>
@@ -4018,6 +4098,11 @@
         handleSaveNewExercise();
       }
     });
+    refs.exCustomExerciseList?.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-delete-exercise]");
+      if (!btn) return;
+      handleDeleteCustomExercise(btn.dataset.deleteExercise);
+    });
     refs.exProgressionExerciseSelect?.addEventListener("change", () => {
       exUi.selectedProgressionExerciseId = refs.exProgressionExerciseSelect.value;
       renderExProgressionChart();
@@ -4166,15 +4251,41 @@
       return;
     }
     refs.exNewExerciseName.value = "";
-    refs.exAddExerciseDetails.open = false;
     populateExerciseSelect(refs.exWorkoutExerciseSelect);
     populateExerciseSelect(refs.exProgressionExerciseSelect);
     populateExerciseSelect(refs.exWorkoutEditExercise);
     refs.exWorkoutExerciseSelect.value = created.id;
+    renderExCustomExerciseList();
     if (refs.exStatExerciseCount) {
       refs.exStatExerciseCount.textContent = String(state.exercise.exercises.length);
     }
     showToast(`Exercise "${created.name}" saved.`);
+  }
+
+  function handleDeleteCustomExercise(exerciseId) {
+    const ex = state.exercise.exercises.find((e) => e.id === exerciseId);
+    if (!ex || ex.builtin) return;
+    const used = countWorkoutsForExercise(exerciseId);
+    if (used > 0) {
+      window.alert(
+        `Can't delete "${ex.name}" — ${used} workout${used === 1 ? "" : "s"} use${used === 1 ? "s" : ""} it. Edit those workouts to use a different exercise first.`,
+      );
+      return;
+    }
+    if (!window.confirm(`Delete the exercise "${ex.name}"?`)) return;
+    exDeleteExercise(exerciseId);
+    populateExerciseSelect(refs.exWorkoutExerciseSelect);
+    populateExerciseSelect(refs.exProgressionExerciseSelect);
+    populateExerciseSelect(refs.exWorkoutEditExercise);
+    renderExCustomExerciseList();
+    if (refs.exStatExerciseCount) {
+      refs.exStatExerciseCount.textContent = String(state.exercise.exercises.length);
+    }
+    if (exUi.selectedProgressionExerciseId === exerciseId) {
+      exUi.selectedProgressionExerciseId = state.exercise.exercises[0]?.id || "";
+      renderExProgressionChart();
+    }
+    showToast(`Exercise "${ex.name}" deleted.`);
   }
 
   function handleAddWorkout() {
@@ -4296,5 +4407,9 @@
   function truncate(str, max) {
     const s = String(str || "");
     return s.length > max ? s.slice(0, max - 1) + "…" : s;
+  }
+
+  function formatDateShort(date) {
+    return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   }
 })();

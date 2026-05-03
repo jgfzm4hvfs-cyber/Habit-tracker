@@ -86,7 +86,12 @@ body.drawer-open {
 .app-column {
   max-width: 960px;
   margin: 0 auto;
-  padding: 0.9rem 1rem 1.4rem;
+  /* env(safe-area-inset-*) keeps content clear of the iOS notch / home indicator
+     when added to home screen. Falls back to the original padding when
+     env() is not supported. */
+  padding:
+    max(0.9rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+    max(1.4rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
   display: grid;
   gap: 0.9rem;
   position: relative;
@@ -2323,6 +2328,13 @@ textarea {
   gap: 0.3rem;
   padding: 0.32rem;
   margin: 0;
+  /* Sticky just below the top-bar so you can switch tabs after scrolling. */
+  position: sticky;
+  top: 56px;
+  z-index: 30;
+  background: rgba(232, 233, 238, 0.78);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
 }
 
 .top-tab-btn {
@@ -2405,6 +2417,12 @@ textarea {
   gap: 0.6rem;
 }
 
+/* The combined Calories+Protein tile spans both columns on mobile so its two
+   stacked progress bars get full width. */
+.ex-snapshot-tile-nutrition {
+  grid-column: 1 / -1;
+}
+
 .ex-snapshot-tile {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -2413,6 +2431,43 @@ textarea {
   display: grid;
   gap: 0.32rem;
   align-content: start;
+}
+
+/* Stacked nutrition rows inside the combined tile */
+.ex-nutri-line {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.ex-nutri-line + .ex-nutri-line {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed var(--line);
+}
+
+.ex-nutri-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.ex-nutri-key {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ex-nutri-val {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
 }
 
 .ex-tile-label {
@@ -2426,13 +2481,32 @@ textarea {
 .ex-tile-value {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 1.45rem;
+  font-size: 1.25rem;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
   display: flex;
   align-items: baseline;
   gap: 2px;
   flex-wrap: wrap;
+}
+
+.ex-tile-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--success);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.ex-tile-check[hidden] {
+  display: none;
 }
 
 .ex-tile-divider {
@@ -2478,6 +2552,12 @@ textarea {
 
 .ex-progress-pro {
   background: linear-gradient(90deg, #2f8b5d, #238a59);
+}
+
+/* When the goal is reached, both bars switch to a richer green for instant
+   visual confirmation. */
+.ex-progress-fill.goal-met {
+  background: linear-gradient(90deg, #2f8b5d, #1e6a45);
 }
 
 /* ------------------------------- Sections ------------------------------- */
@@ -2672,6 +2752,66 @@ textarea {
 
 .ex-add-exercise[open] summary {
   margin-bottom: 0.4rem;
+}
+
+/* Custom-exercise list (manage/delete inside the "Add or manage" drawer). */
+.ex-custom-list {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.6rem;
+}
+
+.ex-custom-list-head {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-soft);
+  font-weight: 700;
+  margin: 0 0 0.1rem;
+}
+
+.ex-custom-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+}
+
+.ex-custom-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ex-custom-used {
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.ex-custom-del {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text-soft);
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 8px;
+  transition: background var(--dur-quick) var(--ease-smooth), color var(--dur-quick) var(--ease-smooth);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ex-custom-del:hover {
+  background: rgba(181, 59, 79, 0.12);
+  color: var(--danger);
 }
 
 .ex-e1rm-preview {
@@ -2950,6 +3090,35 @@ textarea {
   transform: scale(0.97);
 }
 
+/* Today gets a stronger ring so it stands out at a glance among the past month. */
+.ex-day-cell.is-today {
+  border-color: var(--primary);
+  box-shadow:
+    0 0 0 1px var(--primary),
+    0 4px 10px -8px rgba(12, 12, 19, 0.3);
+}
+
+/* A small "May" pill anchors the calendar to a real month start, so users can
+   tell where the month boundary falls when scanning a flowing day grid. */
+.ex-day-month-pill {
+  position: absolute;
+  top: -8px;
+  left: 6px;
+  background: var(--text);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.ex-day-cell {
+  position: relative; /* for month-pill anchoring */
+}
+
 .ex-day-num {
   font-size: 0.66rem;
   color: var(--text-soft);
@@ -3073,10 +3242,11 @@ textarea {
   font-weight: 800;
   color: var(--text-soft);
   cursor: pointer;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 8px;
   transition: background var(--dur-quick) var(--ease-smooth), color var(--dur-quick) var(--ease-smooth);
+  -webkit-tap-highlight-color: transparent;
 }
 
 .ex-weight-del:hover {
@@ -3174,7 +3344,11 @@ textarea {
   }
 
   .ex-tile-value {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
+  }
+
+  .ex-nutri-val {
+    font-size: 1rem;
   }
 
   .ex-stat-value {

@@ -13,7 +13,7 @@
       href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Work+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260503c" />
+    <link rel="stylesheet" href="./styles.css?v=20260503d" />
   </head>
   <body>
     <div class="bg-shape bg-shape-a" aria-hidden="true"></div>
@@ -119,7 +119,7 @@
           <header class="ex-snapshot-head">
             <div>
               <p class="eyebrow">Today</p>
-              <h2 id="exSnapshotDateLabel">Today</h2>
+              <h2 id="exSnapshotDateLabel">Sun, May 3</h2>
             </div>
             <button id="exEditGoalsBtn" class="btn ghost ex-edit-goals-btn" type="button" aria-label="Edit goals">
               <span aria-hidden="true">⚙</span> Goals
@@ -127,20 +127,28 @@
           </header>
 
           <div class="ex-snapshot-grid">
-            <div class="ex-snapshot-tile">
-              <p class="ex-tile-label">Calories</p>
-              <p class="ex-tile-value"><span id="exTodayCalories">0</span><span class="ex-tile-divider">/</span><span id="exTodayCaloriesGoal" class="ex-tile-goal">2500</span></p>
-              <div class="ex-progress-track"><div id="exTodayCaloriesBar" class="ex-progress-fill ex-progress-cal" style="width:0%"></div></div>
-              <p id="exTodayCaloriesRemain" class="ex-tile-sub muted">2500 left</p>
+            <!-- Combined Nutrition tile (calories + protein) -->
+            <div class="ex-snapshot-tile ex-snapshot-tile-nutrition">
+              <p class="ex-tile-label">Nutrition</p>
+              <div class="ex-nutri-line">
+                <div class="ex-nutri-row">
+                  <span class="ex-nutri-key">Calories</span>
+                  <span class="ex-nutri-val"><span id="exTodayCalories">0</span><span class="ex-tile-divider">/</span><span id="exTodayCaloriesGoal" class="ex-tile-goal">2500</span><span id="exTodayCaloriesCheck" class="ex-tile-check" hidden>✓</span></span>
+                </div>
+                <div class="ex-progress-track"><div id="exTodayCaloriesBar" class="ex-progress-fill ex-progress-cal" style="width:0%"></div></div>
+                <p id="exTodayCaloriesRemain" class="ex-tile-sub muted">2500 kcal left</p>
+              </div>
+              <div class="ex-nutri-line">
+                <div class="ex-nutri-row">
+                  <span class="ex-nutri-key">Protein</span>
+                  <span class="ex-nutri-val"><span id="exTodayProtein">0</span><span class="ex-tile-divider">/</span><span id="exTodayProteinGoal" class="ex-tile-goal">180</span><span class="ex-tile-unit">g</span><span id="exTodayProteinCheck" class="ex-tile-check" hidden>✓</span></span>
+                </div>
+                <div class="ex-progress-track"><div id="exTodayProteinBar" class="ex-progress-fill ex-progress-pro" style="width:0%"></div></div>
+                <p id="exTodayProteinRemain" class="ex-tile-sub muted">180 g left</p>
+              </div>
             </div>
             <div class="ex-snapshot-tile">
-              <p class="ex-tile-label">Protein</p>
-              <p class="ex-tile-value"><span id="exTodayProtein">0</span><span class="ex-tile-divider">/</span><span id="exTodayProteinGoal" class="ex-tile-goal">180</span><span class="ex-tile-unit">g</span></p>
-              <div class="ex-progress-track"><div id="exTodayProteinBar" class="ex-progress-fill ex-progress-pro" style="width:0%"></div></div>
-              <p id="exTodayProteinRemain" class="ex-tile-sub muted">180 g left</p>
-            </div>
-            <div class="ex-snapshot-tile">
-              <p class="ex-tile-label">Workouts this wk</p>
+              <p class="ex-tile-label">Workouts (last 7d)</p>
               <p class="ex-tile-value"><span id="exWeekWorkouts">0</span></p>
               <p id="exWeekWorkoutsSub" class="ex-tile-sub muted">No workouts logged</p>
             </div>
@@ -211,7 +219,7 @@
               <span class="ex-legend-item"><span class="ex-legend-swatch" style="background:#2f8b5d"></span>Lunch</span>
               <span class="ex-legend-item"><span class="ex-legend-swatch" style="background:#2563d2"></span>Dinner</span>
               <span class="ex-legend-item"><span class="ex-legend-swatch" style="background:#a06ed1"></span>Snack</span>
-              <span class="ex-legend-item"><span class="ex-legend-swatch ex-legend-line"></span>Protein (g)</span>
+              <span class="ex-legend-item"><span class="ex-legend-swatch ex-legend-line"></span>Protein <span class="muted" style="font-weight:500">(right axis, g)</span></span>
             </div>
           </div>
         </section>
@@ -242,7 +250,7 @@
               </label>
             </div>
             <details class="ex-add-exercise" id="exAddExerciseDetails">
-              <summary>＋ Add new exercise</summary>
+              <summary>＋ Add or manage exercises</summary>
               <div class="ex-quickadd-row">
                 <label class="ex-input-wrap ex-input-wide">
                   <span class="ex-input-label">Exercise name</span>
@@ -250,6 +258,7 @@
                 </label>
                 <button id="exSaveNewExerciseBtn" type="button" class="btn secondary">Save exercise</button>
               </div>
+              <div id="exCustomExerciseList" class="ex-custom-list"></div>
             </details>
             <div class="ex-quickadd-row">
               <label class="ex-input-wrap">
@@ -272,11 +281,11 @@
           <!-- Stats row -->
           <div class="ex-stats-row">
             <div class="ex-stat">
-              <p class="ex-stat-label">This week</p>
+              <p class="ex-stat-label">Last 7 days</p>
               <p class="ex-stat-value"><span id="exStatWeekCount">0</span><span class="ex-stat-unit">workouts</span></p>
             </div>
             <div class="ex-stat">
-              <p class="ex-stat-label">This month</p>
+              <p class="ex-stat-label">Last 30 days</p>
               <p class="ex-stat-value"><span id="exStatMonthCount">0</span><span class="ex-stat-unit">workouts</span></p>
             </div>
             <div class="ex-stat">
@@ -583,6 +592,6 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="./cloud-config.js?v=20260214"></script>
-    <script src="./app.js?v=20260503c" defer></script>
+    <script src="./app.js?v=20260503d" defer></script>
   </body>
 </html>
