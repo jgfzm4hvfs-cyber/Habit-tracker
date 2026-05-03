@@ -56,22 +56,45 @@
     dinner: "🍽",
     snack: "🍎",
   };
-  const WORKOUT_TYPES = ["push", "pull", "upper", "lower", "legs", "other"];
-  const WORKOUT_TYPE_LABELS = {
-    push: "Push",
-    pull: "Pull",
-    upper: "Upper",
-    lower: "Lower",
+  const MUSCLE_GROUPS = [
+    "legs",
+    "lowerback",
+    "back",
+    "shoulders",
+    "triceps",
+    "biceps",
+    "pecs",
+    "abs",
+  ];
+  const MUSCLE_GROUP_LABELS = {
     legs: "Legs",
-    other: "Other",
+    lowerback: "Lower back",
+    back: "Back",
+    shoulders: "Shoulders",
+    triceps: "Triceps",
+    biceps: "Biceps",
+    pecs: "Pecs",
+    abs: "Abs",
   };
-  const WORKOUT_TYPE_COLORS = {
-    push: "#2563d2",
-    pull: "#2f8b5d",
-    upper: "#6a5cb6",
-    lower: "#d7842c",
-    legs: "#b1454f",
-    other: "#5b6173",
+  const MUSCLE_GROUP_COLORS = {
+    legs: "#d7842c",
+    lowerback: "#8b6a35",
+    back: "#2563d2",
+    shoulders: "#2f94bc",
+    triceps: "#6a5cb6",
+    biceps: "#b1454f",
+    pecs: "#2f8b5d",
+    abs: "#5b6173",
+  };
+  // Maps the legacy single-type field to the new muscle-group array, so any
+  // workouts the user logged before this change come across without manual edit.
+  const LEGACY_TYPE_TO_GROUPS = {
+    push: ["pecs", "triceps", "shoulders"],
+    pull: ["back", "biceps"],
+    upper: ["pecs", "back", "shoulders", "triceps", "biceps"],
+    lower: ["legs", "lowerback"],
+    legs: ["legs"],
+    other: [],
   };
   const DEFAULT_EXERCISES = [
     { id: "ex_benkpress", name: "Benkpress", builtin: true },
@@ -88,7 +111,8 @@
   // initial renderAll() at boot can safely read it. NOT persisted/synced.
   const exUi = {
     selectedMealType: "breakfast",
-    selectedWorkoutType: "push",
+    // Multi-select muscle groups for the "log workout" form. Set of group keys.
+    selectedMuscleGroups: new Set(),
     selectedProgressionExerciseId: "",
     weightRangeDays: 30,
     editingMealKey: "",
@@ -336,7 +360,7 @@
 
     // Workouts
     exWorkoutsSection: byId("exWorkoutsSection"),
-    exWorkoutTypeButtons: Array.from(document.querySelectorAll("#exWorkoutsSection .ex-tag-btn[data-workout-type]")),
+    exMuscleGroupButtons: Array.from(document.querySelectorAll("#exWorkoutsSection .ex-tag-btn[data-muscle-group]")),
     exWorkoutExerciseSelect: byId("exWorkoutExerciseSelect"),
     exNewExerciseName: byId("exNewExerciseName"),
     exSaveNewExerciseBtn: byId("exSaveNewExerciseBtn"),
@@ -383,7 +407,7 @@
 
     // Workout edit modal
     exWorkoutEditModal: byId("exWorkoutEditModal"),
-    exWorkoutEditTypeButtons: Array.from(document.querySelectorAll("#exWorkoutEditModal .ex-tag-btn[data-edit-workout-type]")),
+    exWorkoutEditGroupButtons: Array.from(document.querySelectorAll("#exWorkoutEditModal .ex-tag-btn[data-edit-muscle-group]")),
     exWorkoutEditMeta: byId("exWorkoutEditMeta"),
     exWorkoutEditExercise: byId("exWorkoutEditExercise"),
     exWorkoutEditWeight: byId("exWorkoutEditWeight"),
@@ -3121,14 +3145,28 @@
     const weight = clampNumber(roundTo(Number(raw.weight) || 0, 1), 0, 1000);
     const reps = clampNumber(Math.floor(Number(raw.reps) || 0), 1, 100);
     if (weight <= 0 || reps < 1) return null;
-    const type = WORKOUT_TYPES.includes(raw.type) ? raw.type : "other";
+
+    // Muscle groups: prefer the new array; fall back to legacy `type` mapping
+    // so workouts logged before this change keep their meaning.
+    let muscleGroups;
+    if (Array.isArray(raw.muscleGroups)) {
+      muscleGroups = raw.muscleGroups.filter((g) => MUSCLE_GROUPS.includes(g));
+    } else if (raw.type && LEGACY_TYPE_TO_GROUPS[raw.type]) {
+      muscleGroups = LEGACY_TYPE_TO_GROUPS[raw.type].slice();
+    } else {
+      muscleGroups = [];
+    }
+    // Dedupe + preserve canonical order from MUSCLE_GROUPS
+    const seen = new Set(muscleGroups);
+    muscleGroups = MUSCLE_GROUPS.filter((g) => seen.has(g));
+
     let exerciseId = String(raw.exerciseId || "").trim();
     if (!exerciseId || !validExerciseIds.has(exerciseId)) {
       exerciseId = DEFAULT_EXERCISES[0].id;
     }
     return {
       id: String(raw.id || `wk_${generateId()}`),
-      type,
+      muscleGroups,
       exerciseId,
       weight,
       reps,
@@ -3268,12 +3306,12 @@
     return created;
   }
 
-  function exAddWorkout({ type, exerciseId, weight, reps, dateKey }) {
+  function exAddWorkout({ muscleGroups, exerciseId, weight, reps, dateKey }) {
     const ex = state.exercise;
     const date = isValidDateKey(dateKey) ? dateKey : todayKey();
     const validIds = new Set(ex.exercises.map((e) => e.id));
     const workout = normalizeWorkoutEntry(
-      { type, exerciseId, weight, reps, createdAt: new Date().toISOString() },
+      { muscleGroups, exerciseId, weight, reps, createdAt: new Date().toISOString() },
       validIds,
     );
     if (!workout) return null;
@@ -3294,7 +3332,7 @@
     const updated = normalizeWorkoutEntry(
       {
         ...old,
-        type: patch.type ?? old.type,
+        muscleGroups: patch.muscleGroups ?? old.muscleGroups,
         exerciseId: patch.exerciseId ?? old.exerciseId,
         weight: patch.weight ?? old.weight,
         reps: patch.reps ?? old.reps,
@@ -3662,7 +3700,7 @@
   // Workouts section
   // ---------------------------------------------------------------------------
   function renderExWorkoutsSection() {
-    syncWorkoutTypeButtons();
+    syncMuscleGroupButtons();
     setDateInputDefault(refs.exWorkoutDateInput);
     populateExerciseSelect(refs.exWorkoutExerciseSelect);
     populateExerciseSelect(refs.exWorkoutEditExercise);
@@ -3673,10 +3711,12 @@
     renderExProgressionChart();
   }
 
-  function syncWorkoutTypeButtons() {
-    refs.exWorkoutTypeButtons.forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.workoutType === exUi.selectedWorkoutType);
-      btn.style.setProperty("--type-color", WORKOUT_TYPE_COLORS[btn.dataset.workoutType]);
+  function syncMuscleGroupButtons() {
+    refs.exMuscleGroupButtons.forEach((btn) => {
+      const g = btn.dataset.muscleGroup;
+      btn.classList.toggle("active", exUi.selectedMuscleGroups.has(g));
+      btn.style.setProperty("--type-color", MUSCLE_GROUP_COLORS[g]);
+      btn.setAttribute("aria-pressed", exUi.selectedMuscleGroups.has(g) ? "true" : "false");
     });
   }
 
@@ -3793,13 +3833,18 @@
         const best = list.reduce((a, b) => (b.e1rm > a.e1rm ? b : a), list[0]);
         const exercise = ex.exercises.find((e) => e.id === best.exerciseId);
         const exName = exercise ? exercise.name : "";
-        const color = WORKOUT_TYPE_COLORS[best.type];
-        const typeLabel = WORKOUT_TYPE_LABELS[best.type];
+        // Color the cell with the first selected muscle group's color (falls
+        // back to neutral if the workout has none, e.g. legacy "other").
+        const groups = best.muscleGroups || [];
+        const color = groups.length ? MUSCLE_GROUP_COLORS[groups[0]] : "#5b6173";
+        const groupsLabel = groups.length
+          ? groups.map((g) => MUSCLE_GROUP_LABELS[g]).join(" · ")
+          : "—";
         return `
           <button class="ex-day-cell filled${todayClass}" type="button" data-edit-workout="${escapeHtmlAttr(dKey)}|${escapeHtmlAttr(best.id)}" style="--type-color:${color}">
             ${monthPill}
             <span class="ex-day-num">${dayNum}</span>
-            <span class="ex-day-type">${typeLabel}</span>
+            <span class="ex-day-type" title="${escapeHtmlAttr(groupsLabel)}">${escapeHtml(groupsLabel)}</span>
             <span class="ex-day-pr">${formatNumber(best.weight)}×${best.reps}</span>
             <span class="ex-day-e1rm">${formatNumber(roundTo(best.e1rm, 0))}kg e1RM</span>
             <span class="ex-day-exname">${escapeHtml(truncate(exName, 14))}</span>
@@ -4134,10 +4179,12 @@
     });
 
     // -- WORKOUTS --
-    refs.exWorkoutTypeButtons.forEach((btn) => {
+    refs.exMuscleGroupButtons.forEach((btn) => {
       btn.addEventListener("click", () => {
-        exUi.selectedWorkoutType = btn.dataset.workoutType;
-        syncWorkoutTypeButtons();
+        const g = btn.dataset.muscleGroup;
+        if (exUi.selectedMuscleGroups.has(g)) exUi.selectedMuscleGroups.delete(g);
+        else exUi.selectedMuscleGroups.add(g);
+        syncMuscleGroupButtons();
       });
     });
     refs.exWorkoutWeightInput?.addEventListener("input", renderExE1rmPreview);
@@ -4164,9 +4211,13 @@
     refs.exSaveWorkoutEditBtn?.addEventListener("click", () => handleSaveWorkoutEdit());
     refs.exDeleteWorkoutBtn?.addEventListener("click", () => handleDeleteWorkout());
     refs.exCloseWorkoutEditBtn?.addEventListener("click", () => refs.exWorkoutEditModal.close());
-    refs.exWorkoutEditTypeButtons.forEach((btn) => {
+    refs.exWorkoutEditGroupButtons.forEach((btn) => {
       btn.addEventListener("click", () => {
-        refs.exWorkoutEditTypeButtons.forEach((b) => b.classList.toggle("active", b === btn));
+        btn.classList.toggle("active");
+        btn.setAttribute(
+          "aria-pressed",
+          btn.classList.contains("active") ? "true" : "false",
+        );
       });
     });
     [refs.exWorkoutEditWeight, refs.exWorkoutEditReps].forEach((input) => {
@@ -4340,7 +4391,7 @@
     }
     const exerciseId = refs.exWorkoutExerciseSelect.value;
     const result = exAddWorkout({
-      type: exUi.selectedWorkoutType,
+      muscleGroups: Array.from(exUi.selectedMuscleGroups),
       exerciseId,
       weight,
       reps,
@@ -4352,11 +4403,14 @@
     }
     refs.exWorkoutWeightInput.value = "";
     refs.exWorkoutRepsInput.value = "";
+    // Reset muscle-group selection after each log so the next one starts fresh.
+    exUi.selectedMuscleGroups.clear();
+    syncMuscleGroupButtons();
     renderExE1rmPreview();
     renderExSnapshot();
     renderExWorkoutStats();
     renderExWorkoutCalendar();
-    if (exUi.selectedProgressionExerciseId === exerciseId) renderExProgressionChart();
+    renderExProgressionChart();
     const day = result.dateKey === todayKey() ? "today" : result.dateKey;
     showToast(`Workout logged (${day}) · e1RM ${formatNumber(roundTo(result.workout.e1rm, 1))} kg.`);
   }
@@ -4373,8 +4427,13 @@
     refs.exWorkoutEditReps.value = w.reps;
     refs.exWorkoutEditDate.value = dateKey;
     refs.exWorkoutEditE1rm.textContent = `Estimated 1RM: ${formatNumber(roundTo(w.e1rm, 1))} kg`;
-    refs.exWorkoutEditTypeButtons.forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.editWorkoutType === w.type);
+    const activeGroups = new Set(w.muscleGroups || []);
+    refs.exWorkoutEditGroupButtons.forEach((btn) => {
+      const g = btn.dataset.editMuscleGroup;
+      btn.style.setProperty("--type-color", MUSCLE_GROUP_COLORS[g]);
+      const isActive = activeGroups.has(g);
+      btn.classList.toggle("active", isActive);
+      btn.setAttribute("aria-pressed", isActive ? "true" : "false");
     });
     refs.exWorkoutEditModal.showModal();
   }
@@ -4382,9 +4441,11 @@
   function handleSaveWorkoutEdit() {
     if (!exUi.editingWorkoutKey) return;
     const [dateKey, workoutId] = exUi.editingWorkoutKey.split("|");
-    const activeType = refs.exWorkoutEditTypeButtons.find((b) => b.classList.contains("active"));
+    const muscleGroups = refs.exWorkoutEditGroupButtons
+      .filter((b) => b.classList.contains("active"))
+      .map((b) => b.dataset.editMuscleGroup);
     exUpdateWorkout(dateKey, workoutId, {
-      type: activeType?.dataset.editWorkoutType,
+      muscleGroups,
       exerciseId: refs.exWorkoutEditExercise.value,
       weight: Number(refs.exWorkoutEditWeight.value),
       reps: Math.floor(Number(refs.exWorkoutEditReps.value)),
