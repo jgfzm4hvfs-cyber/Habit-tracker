@@ -13,7 +13,7 @@
       href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Work+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260423e" />
+    <link rel="stylesheet" href="./styles.css?v=20260503c" />
   </head>
   <body>
     <div class="bg-shape bg-shape-a" aria-hidden="true"></div>
@@ -39,6 +39,23 @@
           <button id="dismissSignInBannerBtn" class="btn ghost" type="button" aria-label="Dismiss">Later</button>
         </div>
       </div>
+
+      <!-- Top-level app split: Habits app vs Exercise app -->
+      <nav class="top-tab-switch card" role="tablist" aria-label="Main app">
+        <button class="top-tab-btn active" type="button" data-top-tab="habits" role="tab" aria-selected="true">
+          <span class="top-tab-icon" aria-hidden="true">✅</span>
+          <span class="top-tab-label">Habits</span>
+        </button>
+        <button class="top-tab-btn" type="button" data-top-tab="exercise" role="tab" aria-selected="false">
+          <span class="top-tab-icon" aria-hidden="true">🏋️</span>
+          <span class="top-tab-label">Exercise</span>
+        </button>
+      </nav>
+
+      <!-- =============================================================
+           Habits app (existing)
+           ============================================================= -->
+      <div id="habitsApp" class="top-tab-pane active">
 
       <!-- 1. Line chart (first thing) -->
       <section id="progressTop" class="progress-top card" aria-label="Progress overview">
@@ -88,6 +105,244 @@
           <div id="habitHeatmap" class="habit-heatmap"></div>
         </div>
       </section>
+
+      </div><!-- /#habitsApp -->
+
+      <!-- =============================================================
+           Exercise app (NEW)
+           Mobile-first dashboard: snapshot → calories → workouts → weight
+           ============================================================= -->
+      <div id="exerciseApp" class="top-tab-pane" hidden>
+
+        <!-- Daily snapshot: today's totals + week overview -->
+        <section id="exSnapshot" class="card ex-snapshot" aria-label="Today's snapshot">
+          <header class="ex-snapshot-head">
+            <div>
+              <p class="eyebrow">Today</p>
+              <h2 id="exSnapshotDateLabel">Today</h2>
+            </div>
+            <button id="exEditGoalsBtn" class="btn ghost ex-edit-goals-btn" type="button" aria-label="Edit goals">
+              <span aria-hidden="true">⚙</span> Goals
+            </button>
+          </header>
+
+          <div class="ex-snapshot-grid">
+            <div class="ex-snapshot-tile">
+              <p class="ex-tile-label">Calories</p>
+              <p class="ex-tile-value"><span id="exTodayCalories">0</span><span class="ex-tile-divider">/</span><span id="exTodayCaloriesGoal" class="ex-tile-goal">2500</span></p>
+              <div class="ex-progress-track"><div id="exTodayCaloriesBar" class="ex-progress-fill ex-progress-cal" style="width:0%"></div></div>
+              <p id="exTodayCaloriesRemain" class="ex-tile-sub muted">2500 left</p>
+            </div>
+            <div class="ex-snapshot-tile">
+              <p class="ex-tile-label">Protein</p>
+              <p class="ex-tile-value"><span id="exTodayProtein">0</span><span class="ex-tile-divider">/</span><span id="exTodayProteinGoal" class="ex-tile-goal">180</span><span class="ex-tile-unit">g</span></p>
+              <div class="ex-progress-track"><div id="exTodayProteinBar" class="ex-progress-fill ex-progress-pro" style="width:0%"></div></div>
+              <p id="exTodayProteinRemain" class="ex-tile-sub muted">180 g left</p>
+            </div>
+            <div class="ex-snapshot-tile">
+              <p class="ex-tile-label">Workouts this wk</p>
+              <p class="ex-tile-value"><span id="exWeekWorkouts">0</span></p>
+              <p id="exWeekWorkoutsSub" class="ex-tile-sub muted">No workouts logged</p>
+            </div>
+            <div class="ex-snapshot-tile">
+              <p class="ex-tile-label">Weight</p>
+              <p class="ex-tile-value"><span id="exCurrentWeight">—</span><span class="ex-tile-unit">kg</span></p>
+              <p id="exWeightDelta" class="ex-tile-sub muted">No log yet</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Calories section -->
+        <section id="exCaloriesSection" class="card ex-section" aria-label="Calorie tracker">
+          <header class="ex-section-head">
+            <div>
+              <p class="eyebrow">Nutrition</p>
+              <h2>Calories &amp; Protein</h2>
+            </div>
+          </header>
+
+          <!-- Quick-add form -->
+          <div class="ex-quickadd">
+            <div class="ex-meal-tags" role="group" aria-label="Meal type">
+              <button type="button" class="ex-tag-btn active" data-meal-type="breakfast">🥞 Breakfast</button>
+              <button type="button" class="ex-tag-btn" data-meal-type="lunch">🥗 Lunch</button>
+              <button type="button" class="ex-tag-btn" data-meal-type="dinner">🍽 Dinner</button>
+              <button type="button" class="ex-tag-btn" data-meal-type="snack">🍎 Snack</button>
+            </div>
+            <div class="ex-quickadd-row">
+              <label class="ex-input-wrap">
+                <span class="ex-input-label">Calories</span>
+                <input id="exMealCaloriesInput" type="number" inputmode="numeric" min="0" step="1" placeholder="0" />
+              </label>
+              <label class="ex-input-wrap">
+                <span class="ex-input-label">Protein (g)</span>
+                <input id="exMealProteinInput" type="number" inputmode="decimal" min="0" step="0.1" placeholder="0" />
+              </label>
+              <label class="ex-input-wrap">
+                <span class="ex-input-label">Date</span>
+                <input id="exMealDateInput" type="date" />
+              </label>
+            </div>
+            <label class="ex-input-wrap ex-input-wide">
+              <span class="ex-input-label">Note (optional)</span>
+              <input id="exMealNoteInput" type="text" placeholder="E.g. Skyr 200g + banana" maxlength="120" />
+            </label>
+            <button id="exAddMealBtn" type="button" class="btn primary ex-add-btn">＋ Add meal</button>
+          </div>
+
+          <!-- Today's entries -->
+          <div class="ex-subsection">
+            <header class="ex-subsection-head">
+              <h3 id="exMealsListTitle">Today's meals</h3>
+              <span id="exMealsListTotals" class="ex-subsection-meta muted">0 kcal · 0 g protein</span>
+            </header>
+            <div id="exMealsList" class="ex-meals-list"></div>
+          </div>
+
+          <!-- 30-day chart -->
+          <div class="ex-subsection">
+            <header class="ex-subsection-head">
+              <h3>Last 30 days</h3>
+              <span class="ex-subsection-meta muted">Stacked by meal · protein line</span>
+            </header>
+            <div id="exCaloriesChart" class="ex-chart-wrap"></div>
+            <div class="ex-chart-legend">
+              <span class="ex-legend-item"><span class="ex-legend-swatch" style="background:#f1a34a"></span>Breakfast</span>
+              <span class="ex-legend-item"><span class="ex-legend-swatch" style="background:#2f8b5d"></span>Lunch</span>
+              <span class="ex-legend-item"><span class="ex-legend-swatch" style="background:#2563d2"></span>Dinner</span>
+              <span class="ex-legend-item"><span class="ex-legend-swatch" style="background:#a06ed1"></span>Snack</span>
+              <span class="ex-legend-item"><span class="ex-legend-swatch ex-legend-line"></span>Protein (g)</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Workouts section -->
+        <section id="exWorkoutsSection" class="card ex-section" aria-label="Workout logger">
+          <header class="ex-section-head">
+            <div>
+              <p class="eyebrow">Strength</p>
+              <h2>Workouts &amp; PRs</h2>
+            </div>
+          </header>
+
+          <!-- Quick-add workout -->
+          <div class="ex-quickadd">
+            <div class="ex-meal-tags ex-workout-types" role="group" aria-label="Workout type">
+              <button type="button" class="ex-tag-btn active" data-workout-type="push">Push</button>
+              <button type="button" class="ex-tag-btn" data-workout-type="pull">Pull</button>
+              <button type="button" class="ex-tag-btn" data-workout-type="upper">Upper</button>
+              <button type="button" class="ex-tag-btn" data-workout-type="lower">Lower</button>
+              <button type="button" class="ex-tag-btn" data-workout-type="legs">Legs</button>
+              <button type="button" class="ex-tag-btn" data-workout-type="other">Other</button>
+            </div>
+            <div class="ex-quickadd-row">
+              <label class="ex-input-wrap ex-input-wide">
+                <span class="ex-input-label">Exercise (PR lift)</span>
+                <select id="exWorkoutExerciseSelect"></select>
+              </label>
+            </div>
+            <details class="ex-add-exercise" id="exAddExerciseDetails">
+              <summary>＋ Add new exercise</summary>
+              <div class="ex-quickadd-row">
+                <label class="ex-input-wrap ex-input-wide">
+                  <span class="ex-input-label">Exercise name</span>
+                  <input id="exNewExerciseName" type="text" placeholder="E.g. Romanian deadlift" maxlength="60" />
+                </label>
+                <button id="exSaveNewExerciseBtn" type="button" class="btn secondary">Save exercise</button>
+              </div>
+            </details>
+            <div class="ex-quickadd-row">
+              <label class="ex-input-wrap">
+                <span class="ex-input-label">Weight (kg)</span>
+                <input id="exWorkoutWeightInput" type="number" inputmode="decimal" min="0" step="0.5" placeholder="0" />
+              </label>
+              <label class="ex-input-wrap">
+                <span class="ex-input-label">Reps</span>
+                <input id="exWorkoutRepsInput" type="number" inputmode="numeric" min="1" max="30" step="1" placeholder="0" />
+              </label>
+              <label class="ex-input-wrap">
+                <span class="ex-input-label">Date</span>
+                <input id="exWorkoutDateInput" type="date" />
+              </label>
+            </div>
+            <p id="exWorkoutE1rmPreview" class="ex-e1rm-preview muted">Estimated 1RM appears here.</p>
+            <button id="exAddWorkoutBtn" type="button" class="btn primary ex-add-btn">＋ Log workout</button>
+          </div>
+
+          <!-- Stats row -->
+          <div class="ex-stats-row">
+            <div class="ex-stat">
+              <p class="ex-stat-label">This week</p>
+              <p class="ex-stat-value"><span id="exStatWeekCount">0</span><span class="ex-stat-unit">workouts</span></p>
+            </div>
+            <div class="ex-stat">
+              <p class="ex-stat-label">This month</p>
+              <p class="ex-stat-value"><span id="exStatMonthCount">0</span><span class="ex-stat-unit">workouts</span></p>
+            </div>
+            <div class="ex-stat">
+              <p class="ex-stat-label">Exercises tracked</p>
+              <p class="ex-stat-value"><span id="exStatExerciseCount">0</span></p>
+            </div>
+          </div>
+
+          <!-- Last 30 days workout calendar -->
+          <div class="ex-subsection">
+            <header class="ex-subsection-head">
+              <h3>Last 30 days</h3>
+              <span class="ex-subsection-meta muted">Best lift per day (e1RM)</span>
+            </header>
+            <div id="exWorkoutCalendar" class="ex-workout-calendar"></div>
+          </div>
+
+          <!-- Per-exercise progression -->
+          <div class="ex-subsection">
+            <header class="ex-subsection-head">
+              <h3>Strength progression</h3>
+              <select id="exProgressionExerciseSelect" class="ex-inline-select" aria-label="Choose exercise"></select>
+            </header>
+            <div id="exProgressionChart" class="ex-chart-wrap"></div>
+          </div>
+        </section>
+
+        <!-- Weight section -->
+        <section id="exWeightSection" class="card ex-section" aria-label="Body weight tracker">
+          <header class="ex-section-head">
+            <div>
+              <p class="eyebrow">Body</p>
+              <h2>Weight</h2>
+            </div>
+          </header>
+
+          <div class="ex-quickadd">
+            <div class="ex-quickadd-row">
+              <label class="ex-input-wrap">
+                <span class="ex-input-label">Weight (kg)</span>
+                <input id="exWeightInput" type="number" inputmode="decimal" min="20" max="400" step="0.1" placeholder="0.0" />
+              </label>
+              <label class="ex-input-wrap">
+                <span class="ex-input-label">Date</span>
+                <input id="exWeightDateInput" type="date" />
+              </label>
+            </div>
+            <button id="exAddWeightBtn" type="button" class="btn primary ex-add-btn">＋ Log weight</button>
+          </div>
+
+          <div class="ex-subsection">
+            <header class="ex-subsection-head">
+              <h3>Trend</h3>
+              <div class="ex-range-switch" role="tablist" aria-label="Weight range">
+                <button class="ex-range-btn active" type="button" data-weight-range="30">30d</button>
+                <button class="ex-range-btn" type="button" data-weight-range="90">90d</button>
+                <button class="ex-range-btn" type="button" data-weight-range="365">1y</button>
+                <button class="ex-range-btn" type="button" data-weight-range="all">All</button>
+              </div>
+            </header>
+            <div id="exWeightChart" class="ex-chart-wrap"></div>
+            <div id="exWeightHistory" class="ex-weight-history"></div>
+          </div>
+        </section>
+
+      </div><!-- /#exerciseApp -->
 
       <!-- Bottom: subtle status indicators -->
       <footer class="status-footer">
@@ -230,9 +485,104 @@
       </form>
     </dialog>
 
+    <!-- Goals editor (Exercise tab) -->
+    <dialog id="exGoalsModal" class="sync-modal">
+      <form id="exGoalsForm" method="dialog">
+        <header class="section-head">
+          <h2>Daily goals</h2>
+          <p class="muted">Adjust as your training and nutrition needs change.</p>
+        </header>
+
+        <label for="exGoalCaloriesInput">Calorie goal (kcal)</label>
+        <input id="exGoalCaloriesInput" type="number" inputmode="numeric" min="500" max="10000" step="50" />
+
+        <label for="exGoalProteinInput">Protein goal (g)</label>
+        <input id="exGoalProteinInput" type="number" inputmode="numeric" min="20" max="500" step="5" />
+
+        <div class="button-row modal-footer">
+          <button id="exSaveGoalsBtn" class="btn primary" type="button">Save</button>
+          <button id="exCloseGoalsBtn" class="btn ghost" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Meal edit dialog (Exercise tab) -->
+    <dialog id="exMealEditModal" class="sync-modal">
+      <form id="exMealEditForm" method="dialog">
+        <header class="section-head">
+          <h2>Edit meal</h2>
+          <p id="exMealEditMeta" class="muted"></p>
+        </header>
+
+        <div class="ex-meal-tags" role="group" aria-label="Meal type">
+          <button type="button" class="ex-tag-btn" data-edit-meal-type="breakfast">🥞 Breakfast</button>
+          <button type="button" class="ex-tag-btn" data-edit-meal-type="lunch">🥗 Lunch</button>
+          <button type="button" class="ex-tag-btn" data-edit-meal-type="dinner">🍽 Dinner</button>
+          <button type="button" class="ex-tag-btn" data-edit-meal-type="snack">🍎 Snack</button>
+        </div>
+
+        <label for="exMealEditCalories">Calories</label>
+        <input id="exMealEditCalories" type="number" inputmode="numeric" min="0" step="1" />
+
+        <label for="exMealEditProtein">Protein (g)</label>
+        <input id="exMealEditProtein" type="number" inputmode="decimal" min="0" step="0.1" />
+
+        <label for="exMealEditDate">Date</label>
+        <input id="exMealEditDate" type="date" />
+
+        <label for="exMealEditNote">Note</label>
+        <input id="exMealEditNote" type="text" maxlength="120" />
+
+        <div class="button-row modal-footer">
+          <button id="exSaveMealEditBtn" class="btn primary" type="button">Save</button>
+          <button id="exDeleteMealBtn" class="btn ghost" type="button" style="color: var(--danger);">Delete</button>
+          <button id="exCloseMealEditBtn" class="btn ghost" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Workout edit dialog (Exercise tab) -->
+    <dialog id="exWorkoutEditModal" class="sync-modal">
+      <form id="exWorkoutEditForm" method="dialog">
+        <header class="section-head">
+          <h2>Edit workout</h2>
+          <p id="exWorkoutEditMeta" class="muted"></p>
+        </header>
+
+        <div class="ex-meal-tags ex-workout-types" role="group" aria-label="Workout type">
+          <button type="button" class="ex-tag-btn" data-edit-workout-type="push">Push</button>
+          <button type="button" class="ex-tag-btn" data-edit-workout-type="pull">Pull</button>
+          <button type="button" class="ex-tag-btn" data-edit-workout-type="upper">Upper</button>
+          <button type="button" class="ex-tag-btn" data-edit-workout-type="lower">Lower</button>
+          <button type="button" class="ex-tag-btn" data-edit-workout-type="legs">Legs</button>
+          <button type="button" class="ex-tag-btn" data-edit-workout-type="other">Other</button>
+        </div>
+
+        <label for="exWorkoutEditExercise">Exercise</label>
+        <select id="exWorkoutEditExercise"></select>
+
+        <label for="exWorkoutEditWeight">Weight (kg)</label>
+        <input id="exWorkoutEditWeight" type="number" inputmode="decimal" min="0" step="0.5" />
+
+        <label for="exWorkoutEditReps">Reps</label>
+        <input id="exWorkoutEditReps" type="number" inputmode="numeric" min="1" max="30" step="1" />
+
+        <label for="exWorkoutEditDate">Date</label>
+        <input id="exWorkoutEditDate" type="date" />
+
+        <p id="exWorkoutEditE1rm" class="ex-e1rm-preview muted"></p>
+
+        <div class="button-row modal-footer">
+          <button id="exSaveWorkoutEditBtn" class="btn primary" type="button">Save</button>
+          <button id="exDeleteWorkoutBtn" class="btn ghost" type="button" style="color: var(--danger);">Delete</button>
+          <button id="exCloseWorkoutEditBtn" class="btn ghost" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="./cloud-config.js?v=20260214"></script>
-    <script src="./app.js?v=20260423e" defer></script>
+    <script src="./app.js?v=20260503c" defer></script>
   </body>
 </html>

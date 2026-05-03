@@ -37,6 +37,64 @@
   const CLOUD_BOOT_CONFIG = readCloudBootConfig();
   const AUTH_CONFIG = readAuthConfig();
 
+  const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"];
+  const MEAL_COLORS = {
+    breakfast: "#f1a34a",
+    lunch: "#2f8b5d",
+    dinner: "#2563d2",
+    snack: "#a06ed1",
+  };
+  const MEAL_LABELS = {
+    breakfast: "Breakfast",
+    lunch: "Lunch",
+    dinner: "Dinner",
+    snack: "Snack",
+  };
+  const MEAL_ICONS = {
+    breakfast: "🥞",
+    lunch: "🥗",
+    dinner: "🍽",
+    snack: "🍎",
+  };
+  const WORKOUT_TYPES = ["push", "pull", "upper", "lower", "legs", "other"];
+  const WORKOUT_TYPE_LABELS = {
+    push: "Push",
+    pull: "Pull",
+    upper: "Upper",
+    lower: "Lower",
+    legs: "Legs",
+    other: "Other",
+  };
+  const WORKOUT_TYPE_COLORS = {
+    push: "#2563d2",
+    pull: "#2f8b5d",
+    upper: "#6a5cb6",
+    lower: "#d7842c",
+    legs: "#b1454f",
+    other: "#5b6173",
+  };
+  const DEFAULT_EXERCISES = [
+    { id: "ex_benkpress", name: "Benkpress", builtin: true },
+    { id: "ex_squat", name: "Squat", builtin: true },
+    { id: "ex_marklift", name: "Markløft", builtin: true },
+    { id: "ex_skulderpress_db", name: "Skulderpress dumbbells", builtin: true },
+    { id: "ex_pulldown_rygg", name: "Pull down rygg", builtin: true },
+  ];
+  const DEFAULT_GOAL_CALORIES = 2500;
+  const DEFAULT_GOAL_PROTEIN = 180;
+  const MAX_REPS_FOR_E1RM = 12;
+
+  // Transient UI state for the Exercise tab — declared early so that the
+  // initial renderAll() at boot can safely read it. NOT persisted/synced.
+  const exUi = {
+    selectedMealType: "breakfast",
+    selectedWorkoutType: "push",
+    selectedProgressionExerciseId: "",
+    weightRangeDays: 30,
+    editingMealKey: "",
+    editingWorkoutKey: "",
+  };
+
   const DEFAULT_HABITS = [
     {
       id: "habit_strength_training",
@@ -156,6 +214,8 @@
   let activeDayDetailsKey = "";
   let toastTimer = null;
   let progressRangeDays = 7;
+  let hasRenderedProgressChart = false;
+  let hasRenderedHeatmap = false;
 
   const refs = {
     todayLabel: byId("todayLabel"),
@@ -237,6 +297,99 @@
     progressGraphList: byId("progressGraphList"),
     progressTopSubheading: byId("progressTopSubheading"),
     progressRangeButtons: Array.from(document.querySelectorAll(".progress-range-btn")),
+
+    // Top tab switcher
+    topTabButtons: Array.from(document.querySelectorAll(".top-tab-btn")),
+    habitsApp: byId("habitsApp"),
+    exerciseApp: byId("exerciseApp"),
+
+    // Snapshot
+    exSnapshotDateLabel: byId("exSnapshotDateLabel"),
+    exEditGoalsBtn: byId("exEditGoalsBtn"),
+    exTodayCalories: byId("exTodayCalories"),
+    exTodayCaloriesGoal: byId("exTodayCaloriesGoal"),
+    exTodayCaloriesBar: byId("exTodayCaloriesBar"),
+    exTodayCaloriesRemain: byId("exTodayCaloriesRemain"),
+    exTodayProtein: byId("exTodayProtein"),
+    exTodayProteinGoal: byId("exTodayProteinGoal"),
+    exTodayProteinBar: byId("exTodayProteinBar"),
+    exTodayProteinRemain: byId("exTodayProteinRemain"),
+    exWeekWorkouts: byId("exWeekWorkouts"),
+    exWeekWorkoutsSub: byId("exWeekWorkoutsSub"),
+    exCurrentWeight: byId("exCurrentWeight"),
+    exWeightDelta: byId("exWeightDelta"),
+
+    // Calories quick-add
+    exCaloriesSection: byId("exCaloriesSection"),
+    exMealTagButtons: Array.from(document.querySelectorAll("#exCaloriesSection .ex-tag-btn[data-meal-type]")),
+    exMealCaloriesInput: byId("exMealCaloriesInput"),
+    exMealProteinInput: byId("exMealProteinInput"),
+    exMealDateInput: byId("exMealDateInput"),
+    exMealNoteInput: byId("exMealNoteInput"),
+    exAddMealBtn: byId("exAddMealBtn"),
+    exMealsList: byId("exMealsList"),
+    exMealsListTitle: byId("exMealsListTitle"),
+    exMealsListTotals: byId("exMealsListTotals"),
+    exCaloriesChart: byId("exCaloriesChart"),
+
+    // Workouts
+    exWorkoutsSection: byId("exWorkoutsSection"),
+    exWorkoutTypeButtons: Array.from(document.querySelectorAll("#exWorkoutsSection .ex-tag-btn[data-workout-type]")),
+    exWorkoutExerciseSelect: byId("exWorkoutExerciseSelect"),
+    exNewExerciseName: byId("exNewExerciseName"),
+    exSaveNewExerciseBtn: byId("exSaveNewExerciseBtn"),
+    exAddExerciseDetails: byId("exAddExerciseDetails"),
+    exWorkoutWeightInput: byId("exWorkoutWeightInput"),
+    exWorkoutRepsInput: byId("exWorkoutRepsInput"),
+    exWorkoutDateInput: byId("exWorkoutDateInput"),
+    exWorkoutE1rmPreview: byId("exWorkoutE1rmPreview"),
+    exAddWorkoutBtn: byId("exAddWorkoutBtn"),
+    exStatWeekCount: byId("exStatWeekCount"),
+    exStatMonthCount: byId("exStatMonthCount"),
+    exStatExerciseCount: byId("exStatExerciseCount"),
+    exWorkoutCalendar: byId("exWorkoutCalendar"),
+    exProgressionExerciseSelect: byId("exProgressionExerciseSelect"),
+    exProgressionChart: byId("exProgressionChart"),
+
+    // Weight
+    exWeightInput: byId("exWeightInput"),
+    exWeightDateInput: byId("exWeightDateInput"),
+    exAddWeightBtn: byId("exAddWeightBtn"),
+    exWeightChart: byId("exWeightChart"),
+    exWeightHistory: byId("exWeightHistory"),
+    exWeightRangeButtons: Array.from(document.querySelectorAll(".ex-range-btn")),
+
+    // Goals modal
+    exGoalsModal: byId("exGoalsModal"),
+    exGoalCaloriesInput: byId("exGoalCaloriesInput"),
+    exGoalProteinInput: byId("exGoalProteinInput"),
+    exSaveGoalsBtn: byId("exSaveGoalsBtn"),
+    exCloseGoalsBtn: byId("exCloseGoalsBtn"),
+
+    // Meal edit modal
+    exMealEditModal: byId("exMealEditModal"),
+    exMealEditTypeButtons: Array.from(document.querySelectorAll("#exMealEditModal .ex-tag-btn[data-edit-meal-type]")),
+    exMealEditMeta: byId("exMealEditMeta"),
+    exMealEditCalories: byId("exMealEditCalories"),
+    exMealEditProtein: byId("exMealEditProtein"),
+    exMealEditDate: byId("exMealEditDate"),
+    exMealEditNote: byId("exMealEditNote"),
+    exSaveMealEditBtn: byId("exSaveMealEditBtn"),
+    exDeleteMealBtn: byId("exDeleteMealBtn"),
+    exCloseMealEditBtn: byId("exCloseMealEditBtn"),
+
+    // Workout edit modal
+    exWorkoutEditModal: byId("exWorkoutEditModal"),
+    exWorkoutEditTypeButtons: Array.from(document.querySelectorAll("#exWorkoutEditModal .ex-tag-btn[data-edit-workout-type]")),
+    exWorkoutEditMeta: byId("exWorkoutEditMeta"),
+    exWorkoutEditExercise: byId("exWorkoutEditExercise"),
+    exWorkoutEditWeight: byId("exWorkoutEditWeight"),
+    exWorkoutEditReps: byId("exWorkoutEditReps"),
+    exWorkoutEditDate: byId("exWorkoutEditDate"),
+    exWorkoutEditE1rm: byId("exWorkoutEditE1rm"),
+    exSaveWorkoutEditBtn: byId("exSaveWorkoutEditBtn"),
+    exDeleteWorkoutBtn: byId("exDeleteWorkoutBtn"),
+    exCloseWorkoutEditBtn: byId("exCloseWorkoutEditBtn"),
   };
 
   initialize();
@@ -283,6 +436,7 @@
   }
 
   function bindEvents() {
+    bindExerciseEvents();
     // Scroll-aware top bar (glass gets more opaque on scroll).
     const topBar = document.querySelector(".top-bar");
     if (topBar) {
@@ -633,6 +787,8 @@
     renderMainContent();
     renderSyncPanel();
     renderSignInBanner();
+    renderTopTabs();
+    renderExerciseDashboard();
   }
 
   function openSidebar() {
@@ -803,8 +959,12 @@
       })
       .join("");
 
+    // Only animate on the very first render of this session. Re-renders
+    // (after every habit toggle) skip animations so the chart doesn't spasm.
+    const animateClass = hasRenderedProgressChart ? "" : " chart-animate-in";
+    hasRenderedProgressChart = true;
     const svg = `
-      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" class="progress-chart-svg" role="img" aria-label="Weekly goal completion chart: 7-day and 30-day rolling averages per habit">
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" class="progress-chart-svg${animateClass}" role="img" aria-label="Weekly goal completion chart: 7-day and 30-day rolling averages per habit">
         ${gridlines}
         ${axis}
         <polyline points="${points30}" pathLength="100" class="chart-line chart-line-30" fill="none"></polyline>
@@ -1379,8 +1539,11 @@
       .map((l) => `<span class="heat-day">${l}</span>`)
       .join("");
 
+    // Animate only on first render of this session.
+    const heatAnimateClass = hasRenderedHeatmap ? "" : " heat-animate-in";
+    hasRenderedHeatmap = true;
     refs.habitHeatmap.innerHTML = `
-      <div class="heatmap-new">
+      <div class="heatmap-new${heatAnimateClass}">
         <header class="heatmap-new-head">
           <div>
             <p class="heatmap-big-stat">${Math.round(overallRate * 100)}%</p>
@@ -1397,7 +1560,7 @@
             <span class="muted">More</span>
           </div>
         </header>
-        <div class="heatmap-months-row" style="grid-template-columns: repeat(${TOTAL_WEEKS}, 13px);">
+        <div class="heatmap-months-row" style="grid-template-columns: repeat(${TOTAL_WEEKS}, var(--heat-cell-w, 13px));">
           ${monthLabelsHtml}
         </div>
         <div class="heatmap-body">
@@ -2121,6 +2284,8 @@
     // Legacy field kept in state for compatibility with older clients, but unused.
     next.sidebarMode = next.sidebarMode === "analytics" ? "analytics" : "daily";
     next.viewMode = ["week", "heatmap"].includes(next.viewMode) ? next.viewMode : "week";
+    next.activeTopTab = next.activeTopTab === "exercise" ? "exercise" : "habits";
+    next.exercise = normalizeExerciseSlice(next.exercise);
 
     next.habits = Array.isArray(next.habits) ? next.habits : [];
     next.habits = next.habits
@@ -2195,12 +2360,14 @@
 
   function buildStateTemplate() {
     return {
-      version: 2,
+      version: 3,
       sidebarMode: "daily",
       viewMode: "week",
+      activeTopTab: "habits",
       habits: cloneData(DEFAULT_HABITS),
       entries: {},
       dayNotes: {},
+      exercise: buildExerciseTemplate(),
       cloud: {
         enabled: Boolean(CLOUD_BOOT_CONFIG.enabled),
         webAppUrl: normalizeCloudUrl(CLOUD_BOOT_CONFIG.webAppUrl),
@@ -2311,7 +2478,16 @@
         use_fedcm_for_prompt: true,
       });
       renderGoogleSignInButton();
-      window.google.accounts.id.prompt();
+
+      // Only show Google's One Tap popup if we don't already have a working
+      // login. With a valid session token (90-day) or fresh ID token (1-hour),
+      // there's no reason to prompt — the user is already authenticated.
+      const idTokenValid =
+        Boolean(state.auth?.idToken) && !isJwtExpired(state.auth.idToken, 45);
+      const alreadyAuthenticated = hasValidSessionToken_() || idTokenValid;
+      if (!alreadyAuthenticated) {
+        window.google.accounts.id.prompt();
+      }
     });
   }
 
@@ -2798,5 +2974,1327 @@
       return error.message;
     }
     return String(error || "Unknown error");
+  }
+
+  // ===========================================================================
+  // Exercise module (calories, workouts, body weight)
+  // ---------------------------------------------------------------------------
+  // Adds three trackers under a top-level "Exercise" tab. Persists to the same
+  // state JSON blob as the habits app, so existing Google Sign-In + Google
+  // Sheet sync covers it for free. The Telegram reminder logic in Code.gs only
+  // counts state.entries (habit completions), so logging meals/workouts/weight
+  // does NOT suppress the daily reminder.
+  // ===========================================================================
+
+  // (exUi is declared near the top of the IIFE so the initial renderAll() at
+  // boot can read it without hitting the const-TDZ.)
+
+  function buildExerciseTemplate() {
+    return {
+      goals: {
+        calories: DEFAULT_GOAL_CALORIES,
+        protein: DEFAULT_GOAL_PROTEIN,
+      },
+      meals: {},
+      workouts: {},
+      exercises: cloneData(DEFAULT_EXERCISES),
+      weights: {},
+    };
+  }
+
+  function normalizeExerciseSlice(raw) {
+    const template = buildExerciseTemplate();
+    const next = {
+      ...template,
+      ...(raw && typeof raw === "object" ? raw : {}),
+    };
+
+    // Goals
+    next.goals = {
+      ...template.goals,
+      ...(next.goals && typeof next.goals === "object" ? next.goals : {}),
+    };
+    next.goals.calories = clampNumber(
+      Math.round(Number(next.goals.calories) || DEFAULT_GOAL_CALORIES),
+      500,
+      10000,
+    );
+    next.goals.protein = clampNumber(
+      Math.round(Number(next.goals.protein) || DEFAULT_GOAL_PROTEIN),
+      20,
+      500,
+    );
+
+    // Exercises (custom + builtin)
+    const seen = new Set();
+    const cleanExercises = [];
+    const rawExercises = Array.isArray(next.exercises) ? next.exercises : [];
+    rawExercises.forEach((ex) => {
+      if (!ex || typeof ex !== "object") return;
+      const name = String(ex.name || "").trim();
+      if (!name) return;
+      const id = String(ex.id || `ex_${generateId()}`).trim() || `ex_${generateId()}`;
+      const lowerName = name.toLowerCase();
+      if (seen.has(lowerName)) return;
+      seen.add(lowerName);
+      cleanExercises.push({
+        id,
+        name: name.slice(0, 80),
+        builtin: Boolean(ex.builtin),
+      });
+    });
+    DEFAULT_EXERCISES.forEach((d) => {
+      if (!seen.has(d.name.toLowerCase())) {
+        cleanExercises.push({ ...d });
+        seen.add(d.name.toLowerCase());
+      }
+    });
+    next.exercises = cleanExercises;
+    const validExerciseIds = new Set(next.exercises.map((e) => e.id));
+
+    // Meals: { dateKey: [meal, meal, ...] }
+    const cleanMeals = {};
+    const rawMeals = next.meals && typeof next.meals === "object" ? next.meals : {};
+    Object.keys(rawMeals).forEach((dateKey) => {
+      if (!isValidDateKey(dateKey)) return;
+      const list = Array.isArray(rawMeals[dateKey]) ? rawMeals[dateKey] : [];
+      const cleanList = list
+        .map((m) => normalizeMealEntry(m))
+        .filter(Boolean);
+      if (cleanList.length) cleanMeals[dateKey] = cleanList;
+    });
+    next.meals = cleanMeals;
+
+    // Workouts: { dateKey: [workout, workout, ...] }
+    const cleanWorkouts = {};
+    const rawWorkouts = next.workouts && typeof next.workouts === "object" ? next.workouts : {};
+    Object.keys(rawWorkouts).forEach((dateKey) => {
+      if (!isValidDateKey(dateKey)) return;
+      const list = Array.isArray(rawWorkouts[dateKey]) ? rawWorkouts[dateKey] : [];
+      const cleanList = list
+        .map((w) => normalizeWorkoutEntry(w, validExerciseIds))
+        .filter(Boolean);
+      if (cleanList.length) cleanWorkouts[dateKey] = cleanList;
+    });
+    next.workouts = cleanWorkouts;
+
+    // Weights: { dateKey: { kg, createdAt } } — at most one per day
+    const cleanWeights = {};
+    const rawWeights = next.weights && typeof next.weights === "object" ? next.weights : {};
+    Object.keys(rawWeights).forEach((dateKey) => {
+      if (!isValidDateKey(dateKey)) return;
+      const entry = rawWeights[dateKey];
+      if (!entry || typeof entry !== "object") return;
+      const kg = clampNumber(Number(entry.kg), 20, 400);
+      if (!Number.isFinite(kg) || kg <= 0) return;
+      cleanWeights[dateKey] = {
+        kg: roundTo(kg, 1),
+        createdAt: String(entry.createdAt || new Date().toISOString()),
+      };
+    });
+    next.weights = cleanWeights;
+
+    return next;
+  }
+
+  function normalizeMealEntry(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const calories = clampNumber(Math.round(Number(raw.calories) || 0), 0, 20000);
+    const protein = clampNumber(roundTo(Number(raw.protein) || 0, 1), 0, 1000);
+    if (calories === 0 && protein === 0 && !raw.note) return null;
+    const mealType = MEAL_TYPES.includes(raw.mealType) ? raw.mealType : "snack";
+    return {
+      id: String(raw.id || `meal_${generateId()}`),
+      mealType,
+      calories,
+      protein,
+      note: String(raw.note || "").trim().slice(0, 200),
+      createdAt: String(raw.createdAt || new Date().toISOString()),
+    };
+  }
+
+  function normalizeWorkoutEntry(raw, validExerciseIds) {
+    if (!raw || typeof raw !== "object") return null;
+    const weight = clampNumber(roundTo(Number(raw.weight) || 0, 1), 0, 1000);
+    const reps = clampNumber(Math.floor(Number(raw.reps) || 0), 1, 100);
+    if (weight <= 0 || reps < 1) return null;
+    const type = WORKOUT_TYPES.includes(raw.type) ? raw.type : "other";
+    let exerciseId = String(raw.exerciseId || "").trim();
+    if (!exerciseId || !validExerciseIds.has(exerciseId)) {
+      exerciseId = DEFAULT_EXERCISES[0].id;
+    }
+    return {
+      id: String(raw.id || `wk_${generateId()}`),
+      type,
+      exerciseId,
+      weight,
+      reps,
+      e1rm: roundTo(calcE1rm(weight, reps), 1),
+      createdAt: String(raw.createdAt || new Date().toISOString()),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 1RM estimation — Epley formula.
+  // 1RM = weight × (1 + reps / 30)   for reps > 1
+  // 1RM = weight                     for reps = 1
+  // Validated against direct 1RM testing in LeSuer et al. (1997) and Reynolds
+  // et al. (2006) for rep ranges 1–10. Most accurate at lower reps; flagged
+  // beyond MAX_REPS_FOR_E1RM since the rep-weight curve flattens at high reps.
+  // ---------------------------------------------------------------------------
+  function calcE1rm(weight, reps) {
+    const w = Number(weight);
+    const r = Math.max(1, Math.floor(Number(reps) || 0));
+    if (!Number.isFinite(w) || w <= 0 || r < 1) return 0;
+    if (r === 1) return w;
+    return w * (1 + r / 30);
+  }
+
+  function isValidDateKey(value) {
+    return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  }
+
+  function roundTo(value, decimals) {
+    const factor = Math.pow(10, decimals);
+    return Math.round(Number(value) * factor) / factor;
+  }
+
+  function dateKeyDaysAgo(daysBack) {
+    return toDateKey(addDays(new Date(), -daysBack));
+  }
+
+  function lastNDateKeys(n) {
+    const arr = [];
+    for (let i = n - 1; i >= 0; i -= 1) arr.push(dateKeyDaysAgo(i));
+    return arr;
+  }
+
+  // ===========================================================================
+  // Mutations (each calls persistState() so cloud sync picks them up)
+  // ===========================================================================
+
+  function exAddMeal({ mealType, calories, protein, note, dateKey }) {
+    const ex = state.exercise;
+    const date = isValidDateKey(dateKey) ? dateKey : todayKey();
+    const meal = normalizeMealEntry({
+      mealType,
+      calories,
+      protein,
+      note,
+      createdAt: new Date().toISOString(),
+    });
+    if (!meal) return null;
+    if (!ex.meals[date]) ex.meals[date] = [];
+    ex.meals[date].push(meal);
+    persistState();
+    return { meal, dateKey: date };
+  }
+
+  function exUpdateMeal(dateKey, mealId, patch) {
+    const ex = state.exercise;
+    const targetDate = isValidDateKey(patch.dateKey) ? patch.dateKey : dateKey;
+    const list = ex.meals[dateKey] || [];
+    const idx = list.findIndex((m) => m.id === mealId);
+    if (idx < 0) return false;
+    const old = list[idx];
+    const updated = normalizeMealEntry({
+      ...old,
+      mealType: patch.mealType ?? old.mealType,
+      calories: patch.calories ?? old.calories,
+      protein: patch.protein ?? old.protein,
+      note: patch.note ?? old.note,
+    });
+    if (!updated) return false;
+    if (targetDate !== dateKey) {
+      list.splice(idx, 1);
+      if (list.length === 0) delete ex.meals[dateKey];
+      if (!ex.meals[targetDate]) ex.meals[targetDate] = [];
+      ex.meals[targetDate].push(updated);
+    } else {
+      list[idx] = updated;
+    }
+    persistState();
+    return true;
+  }
+
+  function exDeleteMeal(dateKey, mealId) {
+    const ex = state.exercise;
+    const list = ex.meals[dateKey] || [];
+    const idx = list.findIndex((m) => m.id === mealId);
+    if (idx < 0) return false;
+    list.splice(idx, 1);
+    if (list.length === 0) delete ex.meals[dateKey];
+    persistState();
+    return true;
+  }
+
+  function exAddExercise(name) {
+    const ex = state.exercise;
+    const trimmed = String(name || "").trim();
+    if (!trimmed) return null;
+    const lower = trimmed.toLowerCase();
+    const existing = ex.exercises.find((e) => e.name.toLowerCase() === lower);
+    if (existing) return existing;
+    const created = {
+      id: `ex_${generateId()}`,
+      name: trimmed.slice(0, 80),
+      builtin: false,
+    };
+    ex.exercises.push(created);
+    persistState();
+    return created;
+  }
+
+  function exAddWorkout({ type, exerciseId, weight, reps, dateKey }) {
+    const ex = state.exercise;
+    const date = isValidDateKey(dateKey) ? dateKey : todayKey();
+    const validIds = new Set(ex.exercises.map((e) => e.id));
+    const workout = normalizeWorkoutEntry(
+      { type, exerciseId, weight, reps, createdAt: new Date().toISOString() },
+      validIds,
+    );
+    if (!workout) return null;
+    if (!ex.workouts[date]) ex.workouts[date] = [];
+    ex.workouts[date].push(workout);
+    persistState();
+    return { workout, dateKey: date };
+  }
+
+  function exUpdateWorkout(dateKey, workoutId, patch) {
+    const ex = state.exercise;
+    const targetDate = isValidDateKey(patch.dateKey) ? patch.dateKey : dateKey;
+    const list = ex.workouts[dateKey] || [];
+    const idx = list.findIndex((w) => w.id === workoutId);
+    if (idx < 0) return false;
+    const old = list[idx];
+    const validIds = new Set(ex.exercises.map((e) => e.id));
+    const updated = normalizeWorkoutEntry(
+      {
+        ...old,
+        type: patch.type ?? old.type,
+        exerciseId: patch.exerciseId ?? old.exerciseId,
+        weight: patch.weight ?? old.weight,
+        reps: patch.reps ?? old.reps,
+      },
+      validIds,
+    );
+    if (!updated) return false;
+    if (targetDate !== dateKey) {
+      list.splice(idx, 1);
+      if (list.length === 0) delete ex.workouts[dateKey];
+      if (!ex.workouts[targetDate]) ex.workouts[targetDate] = [];
+      ex.workouts[targetDate].push(updated);
+    } else {
+      list[idx] = updated;
+    }
+    persistState();
+    return true;
+  }
+
+  function exDeleteWorkout(dateKey, workoutId) {
+    const ex = state.exercise;
+    const list = ex.workouts[dateKey] || [];
+    const idx = list.findIndex((w) => w.id === workoutId);
+    if (idx < 0) return false;
+    list.splice(idx, 1);
+    if (list.length === 0) delete ex.workouts[dateKey];
+    persistState();
+    return true;
+  }
+
+  function exAddWeight({ kg, dateKey }) {
+    const ex = state.exercise;
+    const date = isValidDateKey(dateKey) ? dateKey : todayKey();
+    const value = clampNumber(roundTo(Number(kg) || 0, 1), 20, 400);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    ex.weights[date] = { kg: value, createdAt: new Date().toISOString() };
+    persistState();
+    return { kg: value, dateKey: date };
+  }
+
+  function exDeleteWeight(dateKey) {
+    const ex = state.exercise;
+    if (!ex.weights[dateKey]) return false;
+    delete ex.weights[dateKey];
+    persistState();
+    return true;
+  }
+
+  function exSetGoals(calories, protein) {
+    const ex = state.exercise;
+    ex.goals.calories = clampNumber(Math.round(Number(calories) || DEFAULT_GOAL_CALORIES), 500, 10000);
+    ex.goals.protein = clampNumber(Math.round(Number(protein) || DEFAULT_GOAL_PROTEIN), 20, 500);
+    persistState();
+  }
+
+  // ===========================================================================
+  // Top tab switcher (Habits | Exercise)
+  // ===========================================================================
+
+  function setTopTab(tab) {
+    const next = tab === "exercise" ? "exercise" : "habits";
+    if (state.activeTopTab === next) return;
+    state.activeTopTab = next;
+    persistState({ skipCloud: true });
+    renderTopTabs();
+    if (next === "exercise") {
+      renderExerciseDashboard();
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function renderTopTabs() {
+    if (!refs.topTabButtons || !refs.habitsApp || !refs.exerciseApp) return;
+    const tab = state.activeTopTab === "exercise" ? "exercise" : "habits";
+    refs.topTabButtons.forEach((btn) => {
+      const isActive = btn.dataset.topTab === tab;
+      btn.classList.toggle("active", isActive);
+      btn.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    refs.habitsApp.hidden = tab !== "habits";
+    refs.exerciseApp.hidden = tab !== "exercise";
+  }
+
+  // ===========================================================================
+  // Render orchestration
+  // ===========================================================================
+
+  function renderExerciseDashboard() {
+    if (!refs.exerciseApp) return;
+    renderExSnapshot();
+    renderExCaloriesSection();
+    renderExWorkoutsSection();
+    renderExWeightSection();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Snapshot
+  // ---------------------------------------------------------------------------
+  function renderExSnapshot() {
+    const ex = state.exercise;
+    if (!ex || !refs.exTodayCalories) return;
+
+    if (refs.exSnapshotDateLabel) {
+      refs.exSnapshotDateLabel.textContent = formatDateReadable(new Date());
+    }
+
+    const today = todayKey();
+    const meals = ex.meals[today] || [];
+    const totals = sumMeals(meals);
+    const goalCal = ex.goals.calories;
+    const goalPro = ex.goals.protein;
+
+    refs.exTodayCalories.textContent = formatNumber(totals.calories);
+    refs.exTodayCaloriesGoal.textContent = formatNumber(goalCal);
+    refs.exTodayCaloriesBar.style.width = `${Math.min(100, (totals.calories / goalCal) * 100)}%`;
+    const calRemain = goalCal - totals.calories;
+    refs.exTodayCaloriesRemain.textContent =
+      calRemain >= 0
+        ? `${formatNumber(calRemain)} kcal left`
+        : `${formatNumber(Math.abs(calRemain))} kcal over`;
+
+    refs.exTodayProtein.textContent = formatNumber(totals.protein);
+    refs.exTodayProteinGoal.textContent = formatNumber(goalPro);
+    refs.exTodayProteinBar.style.width = `${Math.min(100, (totals.protein / goalPro) * 100)}%`;
+    const proRemain = goalPro - totals.protein;
+    refs.exTodayProteinRemain.textContent =
+      proRemain >= 0
+        ? `${formatNumber(roundTo(proRemain, 1))} g protein left`
+        : `${formatNumber(roundTo(Math.abs(proRemain), 1))} g over`;
+
+    // Workouts this week (Mon–Sun).
+    const weekStart = startOfWeek(new Date(), WEEK_STARTS_ON);
+    let weekCount = 0;
+    let bestE1rmThisWeek = 0;
+    let bestE1rmExercise = "";
+    for (let i = 0; i < 7; i += 1) {
+      const dKey = toDateKey(addDays(weekStart, i));
+      const list = ex.workouts[dKey] || [];
+      weekCount += list.length;
+      list.forEach((w) => {
+        if (w.e1rm > bestE1rmThisWeek) {
+          bestE1rmThisWeek = w.e1rm;
+          const e = ex.exercises.find((x) => x.id === w.exerciseId);
+          bestE1rmExercise = e ? e.name : "";
+        }
+      });
+    }
+    refs.exWeekWorkouts.textContent = String(weekCount);
+    refs.exWeekWorkoutsSub.textContent = bestE1rmThisWeek
+      ? `Top e1RM: ${formatNumber(roundTo(bestE1rmThisWeek, 1))} kg · ${bestE1rmExercise}`
+      : weekCount
+        ? `${weekCount} session${weekCount === 1 ? "" : "s"}`
+        : "No workouts logged";
+
+    // Weight + delta vs ~7 days ago.
+    const weightEntries = Object.entries(ex.weights)
+      .map(([dKey, v]) => ({ dateKey: dKey, kg: v.kg }))
+      .sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
+    if (weightEntries.length === 0) {
+      refs.exCurrentWeight.textContent = "—";
+      refs.exWeightDelta.textContent = "No log yet";
+    } else {
+      const latest = weightEntries[weightEntries.length - 1];
+      refs.exCurrentWeight.textContent = formatNumber(latest.kg);
+      const cutoff = dateKeyDaysAgo(7);
+      const earlier = [...weightEntries]
+        .reverse()
+        .find((e) => e.dateKey <= cutoff && e.dateKey !== latest.dateKey);
+      if (earlier) {
+        const delta = roundTo(latest.kg - earlier.kg, 1);
+        const sign = delta > 0 ? "+" : "";
+        refs.exWeightDelta.textContent = `${sign}${formatNumber(delta)} kg vs ${earlier.dateKey}`;
+      } else {
+        refs.exWeightDelta.textContent = `Logged ${latest.dateKey}`;
+      }
+    }
+  }
+
+  function sumMeals(meals) {
+    let calories = 0;
+    let protein = 0;
+    meals.forEach((m) => {
+      calories += m.calories;
+      protein += m.protein;
+    });
+    return { calories, protein: roundTo(protein, 1) };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Calories section
+  // ---------------------------------------------------------------------------
+  function renderExCaloriesSection() {
+    syncMealTagButtons();
+    setDateInputDefault(refs.exMealDateInput);
+    renderExMealsList();
+    renderExCaloriesChart();
+  }
+
+  function syncMealTagButtons() {
+    refs.exMealTagButtons.forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.mealType === exUi.selectedMealType);
+    });
+  }
+
+  function setDateInputDefault(input) {
+    if (!input) return;
+    if (!input.value) input.value = todayKey();
+    if (!input.max) input.max = todayKey();
+  }
+
+  function renderExMealsList() {
+    if (!refs.exMealsList) return;
+    const ex = state.exercise;
+    const date = refs.exMealDateInput?.value && isValidDateKey(refs.exMealDateInput.value)
+      ? refs.exMealDateInput.value
+      : todayKey();
+    const meals = (ex.meals[date] || []).slice().sort((a, b) => {
+      const order = MEAL_TYPES.indexOf(a.mealType) - MEAL_TYPES.indexOf(b.mealType);
+      if (order !== 0) return order;
+      return a.createdAt < b.createdAt ? -1 : 1;
+    });
+    const totals = sumMeals(meals);
+
+    if (refs.exMealsListTitle) {
+      const isToday = date === todayKey();
+      refs.exMealsListTitle.textContent = isToday ? "Today's meals" : `Meals on ${date}`;
+    }
+    if (refs.exMealsListTotals) {
+      refs.exMealsListTotals.textContent = `${formatNumber(totals.calories)} kcal · ${formatNumber(totals.protein)} g protein`;
+    }
+
+    if (meals.length === 0) {
+      refs.exMealsList.innerHTML =
+        '<p class="ex-empty">No meals logged for this day yet. Add one above.</p>';
+      return;
+    }
+
+    refs.exMealsList.innerHTML = meals
+      .map((m) => {
+        const color = MEAL_COLORS[m.mealType];
+        const icon = MEAL_ICONS[m.mealType];
+        const label = MEAL_LABELS[m.mealType];
+        const note = m.note ? `<p class="ex-meal-note">${escapeHtml(m.note)}</p>` : "";
+        return `
+          <button class="ex-meal-row" type="button" data-edit-meal="${escapeHtmlAttr(date)}|${escapeHtmlAttr(m.id)}" style="--meal-color:${color}">
+            <span class="ex-meal-icon" aria-hidden="true">${icon}</span>
+            <span class="ex-meal-body">
+              <span class="ex-meal-label">${label}</span>
+              ${note}
+            </span>
+            <span class="ex-meal-stats">
+              <span class="ex-meal-cal">${formatNumber(m.calories)} <span class="ex-meal-unit">kcal</span></span>
+              <span class="ex-meal-pro muted">${formatNumber(m.protein)} g protein</span>
+            </span>
+          </button>
+        `;
+      })
+      .join("");
+  }
+
+  function renderExCaloriesChart() {
+    if (!refs.exCaloriesChart) return;
+    const ex = state.exercise;
+    const days = lastNDateKeys(30);
+    const goalCal = ex.goals.calories;
+    const goalPro = ex.goals.protein;
+
+    const dayData = days.map((dKey) => {
+      const list = ex.meals[dKey] || [];
+      const stack = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
+      let protein = 0;
+      list.forEach((m) => {
+        stack[m.mealType] = (stack[m.mealType] || 0) + m.calories;
+        protein += m.protein;
+      });
+      const total = stack.breakfast + stack.lunch + stack.dinner + stack.snack;
+      return { dateKey: dKey, stack, protein, total };
+    });
+
+    const maxCal = Math.max(goalCal * 1.1, ...dayData.map((d) => d.total), 100);
+    const maxPro = Math.max(goalPro * 1.1, ...dayData.map((d) => d.protein), 50);
+
+    const padT = 14;
+    const padR = 36;
+    const padB = 28;
+    const padL = 38;
+    const plotH = 160;
+    const barGap = 2;
+    const slotW = 14;
+    const plotW = days.length * slotW;
+    const width = padL + plotW + padR;
+    const height = padT + plotH + padB;
+    const yCal = (v) => padT + plotH - (v / maxCal) * plotH;
+    const yPro = (v) => padT + plotH - (v / maxPro) * plotH;
+    const xAt = (i) => padL + i * slotW + slotW / 2;
+
+    const goalLineY = yCal(goalCal);
+    const grids = `
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + plotH}" class="chart-axis"></line>
+      <line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" class="chart-axis"></line>
+      <line x1="${padL}" y1="${goalLineY}" x2="${padL + plotW}" y2="${goalLineY}" class="ex-chart-goalline"></line>
+      <text x="${padL - 6}" y="${goalLineY + 3}" class="chart-y-label" text-anchor="end">${formatNumber(goalCal)}</text>
+      <text x="${padL - 6}" y="${padT + 3}" class="chart-y-label" text-anchor="end">kcal</text>
+    `;
+
+    const bars = dayData
+      .map((d, i) => {
+        const x = padL + i * slotW + barGap;
+        const w = slotW - barGap * 2;
+        let y = padT + plotH;
+        const segments = [];
+        MEAL_TYPES.forEach((mt) => {
+          const v = d.stack[mt];
+          if (v <= 0) return;
+          const segH = (v / maxCal) * plotH;
+          y -= segH;
+          segments.push(
+            `<rect x="${x}" y="${y}" width="${w}" height="${segH}" fill="${MEAL_COLORS[mt]}" class="ex-bar-seg"><title>${d.dateKey} · ${MEAL_LABELS[mt]}: ${formatNumber(v)} kcal</title></rect>`,
+          );
+        });
+        return segments.join("");
+      })
+      .join("");
+
+    // Protein line (right Y axis).
+    const proteinPoints = dayData.map((d, i) => `${xAt(i)},${yPro(d.protein)}`).join(" ");
+    const proteinLine = `<polyline points="${proteinPoints}" class="ex-chart-line ex-chart-line-protein" fill="none"></polyline>`;
+    const proteinDots = dayData
+      .map(
+        (d, i) =>
+          `<circle cx="${xAt(i)}" cy="${yPro(d.protein)}" r="2" class="ex-chart-dot ex-chart-dot-protein"><title>${d.dateKey}: ${formatNumber(d.protein)} g protein</title></circle>`,
+      )
+      .join("");
+
+    // X labels (every 5th day for readability)
+    const xLabels = dayData
+      .map((d, i) => {
+        if (i % 5 !== 0 && i !== days.length - 1) return "";
+        const short = d.dateKey.slice(5);
+        return `<text x="${xAt(i)}" y="${padT + plotH + 14}" class="chart-x-label" text-anchor="middle">${short}</text>`;
+      })
+      .join("");
+
+    refs.exCaloriesChart.innerHTML = `
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="ex-chart-svg" role="img" aria-label="30-day calorie and protein chart">
+        ${grids}
+        ${bars}
+        ${proteinLine}
+        ${proteinDots}
+        <text x="${padL + plotW + 6}" y="${padT + 3}" class="chart-y-label" text-anchor="start">${formatNumber(maxPro)}g</text>
+        ${xLabels}
+      </svg>
+    `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Workouts section
+  // ---------------------------------------------------------------------------
+  function renderExWorkoutsSection() {
+    syncWorkoutTypeButtons();
+    setDateInputDefault(refs.exWorkoutDateInput);
+    populateExerciseSelect(refs.exWorkoutExerciseSelect);
+    populateExerciseSelect(refs.exProgressionExerciseSelect);
+    populateExerciseSelect(refs.exWorkoutEditExercise);
+    if (!exUi.selectedProgressionExerciseId && state.exercise.exercises.length) {
+      exUi.selectedProgressionExerciseId = state.exercise.exercises[0].id;
+    }
+    if (refs.exProgressionExerciseSelect) {
+      refs.exProgressionExerciseSelect.value = exUi.selectedProgressionExerciseId;
+    }
+    renderExE1rmPreview();
+    renderExWorkoutStats();
+    renderExWorkoutCalendar();
+    renderExProgressionChart();
+  }
+
+  function syncWorkoutTypeButtons() {
+    refs.exWorkoutTypeButtons.forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.workoutType === exUi.selectedWorkoutType);
+      btn.style.setProperty("--type-color", WORKOUT_TYPE_COLORS[btn.dataset.workoutType]);
+    });
+  }
+
+  function populateExerciseSelect(select) {
+    if (!select) return;
+    const previous = select.value;
+    const ex = state.exercise;
+    select.innerHTML = ex.exercises
+      .map((e) => `<option value="${escapeHtmlAttr(e.id)}">${escapeHtml(e.name)}</option>`)
+      .join("");
+    if (previous && ex.exercises.some((e) => e.id === previous)) {
+      select.value = previous;
+    } else if (ex.exercises.length) {
+      select.value = ex.exercises[0].id;
+    }
+  }
+
+  function renderExE1rmPreview() {
+    if (!refs.exWorkoutE1rmPreview) return;
+    const w = Number(refs.exWorkoutWeightInput?.value);
+    const r = Math.floor(Number(refs.exWorkoutRepsInput?.value));
+    if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(r) || r < 1) {
+      refs.exWorkoutE1rmPreview.textContent = "Estimated 1RM appears here as you type.";
+      refs.exWorkoutE1rmPreview.classList.add("muted");
+      return;
+    }
+    const e1 = roundTo(calcE1rm(w, r), 1);
+    const note = r > MAX_REPS_FOR_E1RM ? " (less accurate above 12 reps)" : "";
+    refs.exWorkoutE1rmPreview.textContent = `Estimated 1RM: ${formatNumber(e1)} kg (Epley: ${formatNumber(w)} × ${r})${note}`;
+    refs.exWorkoutE1rmPreview.classList.remove("muted");
+  }
+
+  function renderExWorkoutStats() {
+    const ex = state.exercise;
+    const weekStart = startOfWeek(new Date(), WEEK_STARTS_ON);
+    let weekCount = 0;
+    for (let i = 0; i < 7; i += 1) {
+      const dKey = toDateKey(addDays(weekStart, i));
+      weekCount += (ex.workouts[dKey] || []).length;
+    }
+    const monthStart = startOfMonth(new Date());
+    const todayDate = startOfDay(new Date());
+    let monthCount = 0;
+    for (let d = new Date(monthStart); d <= todayDate; d = addDays(d, 1)) {
+      const dKey = toDateKey(d);
+      monthCount += (ex.workouts[dKey] || []).length;
+    }
+    if (refs.exStatWeekCount) refs.exStatWeekCount.textContent = String(weekCount);
+    if (refs.exStatMonthCount) refs.exStatMonthCount.textContent = String(monthCount);
+    if (refs.exStatExerciseCount) refs.exStatExerciseCount.textContent = String(ex.exercises.length);
+  }
+
+  function renderExWorkoutCalendar() {
+    if (!refs.exWorkoutCalendar) return;
+    const ex = state.exercise;
+    const days = lastNDateKeys(30);
+    const cells = days
+      .map((dKey) => {
+        const list = ex.workouts[dKey] || [];
+        if (list.length === 0) {
+          return `<div class="ex-day-cell empty"><span class="ex-day-num">${dKey.slice(8)}</span></div>`;
+        }
+        const best = list.reduce((a, b) => (b.e1rm > a.e1rm ? b : a), list[0]);
+        const exercise = ex.exercises.find((e) => e.id === best.exerciseId);
+        const exName = exercise ? exercise.name : "";
+        const color = WORKOUT_TYPE_COLORS[best.type];
+        const typeLabel = WORKOUT_TYPE_LABELS[best.type];
+        return `
+          <button class="ex-day-cell filled" type="button" data-edit-workout="${escapeHtmlAttr(dKey)}|${escapeHtmlAttr(best.id)}" style="--type-color:${color}">
+            <span class="ex-day-num">${dKey.slice(8)}</span>
+            <span class="ex-day-type">${typeLabel}</span>
+            <span class="ex-day-pr">${formatNumber(best.weight)}×${best.reps}</span>
+            <span class="ex-day-e1rm">${formatNumber(roundTo(best.e1rm, 0))}kg e1RM</span>
+            <span class="ex-day-exname">${escapeHtml(truncate(exName, 14))}</span>
+          </button>
+        `;
+      })
+      .join("");
+    refs.exWorkoutCalendar.innerHTML = cells;
+  }
+
+  function renderExProgressionChart() {
+    if (!refs.exProgressionChart) return;
+    const ex = state.exercise;
+    const exId = exUi.selectedProgressionExerciseId;
+    const exercise = ex.exercises.find((e) => e.id === exId);
+
+    if (!exercise) {
+      refs.exProgressionChart.innerHTML =
+        '<p class="ex-empty">Pick an exercise above to see its progression.</p>';
+      return;
+    }
+
+    const points = [];
+    Object.keys(ex.workouts).forEach((dKey) => {
+      const list = ex.workouts[dKey] || [];
+      list.forEach((w) => {
+        if (w.exerciseId === exId) {
+          points.push({ dateKey: dKey, e1rm: w.e1rm, weight: w.weight, reps: w.reps });
+        }
+      });
+    });
+    points.sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
+
+    if (points.length === 0) {
+      refs.exProgressionChart.innerHTML = `<p class="ex-empty">No data yet for ${escapeHtml(exercise.name)}. Log a workout to start tracking.</p>`;
+      return;
+    }
+
+    const padT = 16;
+    const padR = 14;
+    const padB = 28;
+    const padL = 44;
+    const plotH = 180;
+    const minPlotW = 280;
+    const stepW = Math.max(34, Math.min(70, 600 / Math.max(1, points.length - 1)));
+    const plotW = Math.max(minPlotW, (points.length - 1) * stepW || minPlotW);
+    const width = padL + plotW + padR;
+    const height = padT + plotH + padB;
+
+    const values = points.map((p) => p.e1rm);
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
+    const span = Math.max(2, maxV - minV);
+    const yMin = Math.floor((minV - span * 0.15) / 5) * 5;
+    const yMax = Math.ceil((maxV + span * 0.15) / 5) * 5;
+    const yAt = (v) => padT + plotH - ((v - yMin) / Math.max(1, yMax - yMin)) * plotH;
+    const xAt = (i) => (points.length === 1 ? padL + plotW / 2 : padL + (i / (points.length - 1)) * plotW);
+
+    // Y gridlines (5 ticks)
+    const ticks = [];
+    for (let t = 0; t <= 4; t += 1) {
+      const v = yMin + ((yMax - yMin) * t) / 4;
+      ticks.push(v);
+    }
+    const grid = ticks
+      .map((v) => {
+        const y = yAt(v);
+        return `<line x1="${padL}" y1="${y}" x2="${padL + plotW}" y2="${y}" class="chart-grid"></line>
+                <text x="${padL - 6}" y="${y + 3}" class="chart-y-label" text-anchor="end">${formatNumber(roundTo(v, 0))}</text>`;
+      })
+      .join("");
+
+    const linePoints = points.map((p, i) => `${xAt(i)},${yAt(p.e1rm)}`).join(" ");
+    const dots = points
+      .map(
+        (p, i) =>
+          `<circle cx="${xAt(i)}" cy="${yAt(p.e1rm)}" r="3.4" class="ex-chart-dot ex-chart-dot-strength"><title>${p.dateKey} · ${formatNumber(p.weight)}×${p.reps} → ${formatNumber(roundTo(p.e1rm, 1))} kg e1RM</title></circle>`,
+      )
+      .join("");
+
+    // X labels (first, last, and a few in middle if many)
+    const labelIndexes = new Set([0, points.length - 1]);
+    if (points.length > 4) {
+      labelIndexes.add(Math.floor(points.length / 3));
+      labelIndexes.add(Math.floor((points.length * 2) / 3));
+    }
+    const xLabels = points
+      .map((p, i) => {
+        if (!labelIndexes.has(i)) return "";
+        return `<text x="${xAt(i)}" y="${padT + plotH + 16}" class="chart-x-label" text-anchor="middle">${p.dateKey.slice(5)}</text>`;
+      })
+      .join("");
+
+    refs.exProgressionChart.innerHTML = `
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" class="ex-chart-svg" role="img" aria-label="Strength progression for ${escapeHtmlAttr(exercise.name)}">
+        ${grid}
+        <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + plotH}" class="chart-axis"></line>
+        <line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" class="chart-axis"></line>
+        <polyline points="${linePoints}" class="ex-chart-line ex-chart-line-strength" fill="none"></polyline>
+        ${dots}
+        ${xLabels}
+      </svg>
+      <p class="ex-chart-caption muted">Estimated 1RM (kg) over time · ${points.length} workout${points.length === 1 ? "" : "s"} logged</p>
+    `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Weight section
+  // ---------------------------------------------------------------------------
+  function renderExWeightSection() {
+    setDateInputDefault(refs.exWeightDateInput);
+    refs.exWeightRangeButtons?.forEach((btn) => {
+      const isActive = String(btn.dataset.weightRange) === String(exUi.weightRangeDays);
+      btn.classList.toggle("active", isActive);
+    });
+    renderExWeightChart();
+    renderExWeightHistory();
+  }
+
+  function renderExWeightChart() {
+    if (!refs.exWeightChart) return;
+    const ex = state.exercise;
+    const all = Object.entries(ex.weights)
+      .map(([dKey, v]) => ({ dateKey: dKey, kg: v.kg }))
+      .sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
+
+    let points = all;
+    if (exUi.weightRangeDays !== "all") {
+      const cutoff = dateKeyDaysAgo(Number(exUi.weightRangeDays) - 1);
+      points = all.filter((p) => p.dateKey >= cutoff);
+    }
+
+    if (points.length === 0) {
+      refs.exWeightChart.innerHTML =
+        '<p class="ex-empty">No weight logged in this range yet.</p>';
+      return;
+    }
+
+    const padT = 16;
+    const padR = 16;
+    const padB = 28;
+    const padL = 48;
+    const plotH = 180;
+    const minPlotW = 300;
+    const stepW = Math.max(20, Math.min(60, 600 / Math.max(1, points.length - 1)));
+    const plotW = Math.max(minPlotW, (points.length - 1) * stepW || minPlotW);
+    const width = padL + plotW + padR;
+    const height = padT + plotH + padB;
+
+    const values = points.map((p) => p.kg);
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
+    const span = Math.max(1, maxV - minV);
+    const yMin = Math.floor((minV - span * 0.2) * 2) / 2;
+    const yMax = Math.ceil((maxV + span * 0.2) * 2) / 2;
+    const yAt = (v) => padT + plotH - ((v - yMin) / Math.max(0.5, yMax - yMin)) * plotH;
+    const xAt = (i) => (points.length === 1 ? padL + plotW / 2 : padL + (i / (points.length - 1)) * plotW);
+
+    const ticks = [];
+    for (let t = 0; t <= 4; t += 1) {
+      const v = yMin + ((yMax - yMin) * t) / 4;
+      ticks.push(v);
+    }
+    const grid = ticks
+      .map((v) => {
+        const y = yAt(v);
+        return `<line x1="${padL}" y1="${y}" x2="${padL + plotW}" y2="${y}" class="chart-grid"></line>
+                <text x="${padL - 6}" y="${y + 3}" class="chart-y-label" text-anchor="end">${formatNumber(roundTo(v, 1))}</text>`;
+      })
+      .join("");
+
+    const linePoints = points.map((p, i) => `${xAt(i)},${yAt(p.kg)}`).join(" ");
+    const dots = points
+      .map(
+        (p, i) =>
+          `<circle cx="${xAt(i)}" cy="${yAt(p.kg)}" r="3" class="ex-chart-dot ex-chart-dot-weight"><title>${p.dateKey}: ${formatNumber(p.kg)} kg</title></circle>`,
+      )
+      .join("");
+
+    const labelIndexes = new Set([0, points.length - 1]);
+    if (points.length > 4) {
+      labelIndexes.add(Math.floor(points.length / 3));
+      labelIndexes.add(Math.floor((points.length * 2) / 3));
+    }
+    const xLabels = points
+      .map((p, i) => {
+        if (!labelIndexes.has(i)) return "";
+        return `<text x="${xAt(i)}" y="${padT + plotH + 16}" class="chart-x-label" text-anchor="middle">${p.dateKey.slice(5)}</text>`;
+      })
+      .join("");
+
+    refs.exWeightChart.innerHTML = `
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" class="ex-chart-svg" role="img" aria-label="Body weight trend">
+        ${grid}
+        <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + plotH}" class="chart-axis"></line>
+        <line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" class="chart-axis"></line>
+        <polyline points="${linePoints}" class="ex-chart-line ex-chart-line-weight" fill="none"></polyline>
+        ${dots}
+        ${xLabels}
+      </svg>
+    `;
+  }
+
+  function renderExWeightHistory() {
+    if (!refs.exWeightHistory) return;
+    const ex = state.exercise;
+    const all = Object.entries(ex.weights)
+      .map(([dKey, v]) => ({ dateKey: dKey, kg: v.kg }))
+      .sort((a, b) => (a.dateKey < b.dateKey ? 1 : -1)) // newest first
+      .slice(0, 12);
+    if (all.length === 0) {
+      refs.exWeightHistory.innerHTML = "";
+      return;
+    }
+    refs.exWeightHistory.innerHTML = all
+      .map(
+        (p) =>
+          `<div class="ex-weight-row">
+            <span class="ex-weight-date">${p.dateKey}</span>
+            <span class="ex-weight-kg">${formatNumber(p.kg)} <span class="muted">kg</span></span>
+            <button class="ex-weight-del" type="button" data-delete-weight="${escapeHtmlAttr(p.dateKey)}" aria-label="Delete">✕</button>
+          </div>`,
+      )
+      .join("");
+  }
+
+  // ===========================================================================
+  // Event binding
+  // ===========================================================================
+  function bindExerciseEvents() {
+    // Top tab switcher
+    refs.topTabButtons.forEach((btn) => {
+      btn.addEventListener("click", () => setTopTab(btn.dataset.topTab));
+    });
+
+    // Goals modal
+    refs.exEditGoalsBtn?.addEventListener("click", () => openExGoalsModal());
+    refs.exSaveGoalsBtn?.addEventListener("click", () => {
+      exSetGoals(refs.exGoalCaloriesInput.value, refs.exGoalProteinInput.value);
+      refs.exGoalsModal.close();
+      renderExSnapshot();
+      renderExCaloriesChart();
+      showToast("Goals updated.");
+    });
+    refs.exCloseGoalsBtn?.addEventListener("click", () => refs.exGoalsModal.close());
+
+    // -- CALORIES --
+    refs.exMealTagButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        exUi.selectedMealType = btn.dataset.mealType;
+        syncMealTagButtons();
+      });
+    });
+    refs.exMealDateInput?.addEventListener("change", () => renderExMealsList());
+    refs.exAddMealBtn?.addEventListener("click", () => handleAddMeal());
+    [refs.exMealCaloriesInput, refs.exMealProteinInput, refs.exMealNoteInput].forEach((input) => {
+      input?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          handleAddMeal();
+        }
+      });
+    });
+    refs.exMealsList?.addEventListener("click", (e) => {
+      const row = e.target.closest("[data-edit-meal]");
+      if (!row) return;
+      const [dKey, mealId] = row.dataset.editMeal.split("|");
+      openExMealEditModal(dKey, mealId);
+    });
+    refs.exSaveMealEditBtn?.addEventListener("click", () => handleSaveMealEdit());
+    refs.exDeleteMealBtn?.addEventListener("click", () => handleDeleteMeal());
+    refs.exCloseMealEditBtn?.addEventListener("click", () => refs.exMealEditModal.close());
+    refs.exMealEditTypeButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        refs.exMealEditTypeButtons.forEach((b) => b.classList.toggle("active", b === btn));
+      });
+    });
+
+    // -- WORKOUTS --
+    refs.exWorkoutTypeButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        exUi.selectedWorkoutType = btn.dataset.workoutType;
+        syncWorkoutTypeButtons();
+      });
+    });
+    refs.exWorkoutWeightInput?.addEventListener("input", renderExE1rmPreview);
+    refs.exWorkoutRepsInput?.addEventListener("input", renderExE1rmPreview);
+    refs.exAddWorkoutBtn?.addEventListener("click", () => handleAddWorkout());
+    refs.exSaveNewExerciseBtn?.addEventListener("click", () => handleSaveNewExercise());
+    refs.exNewExerciseName?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleSaveNewExercise();
+      }
+    });
+    refs.exProgressionExerciseSelect?.addEventListener("change", () => {
+      exUi.selectedProgressionExerciseId = refs.exProgressionExerciseSelect.value;
+      renderExProgressionChart();
+    });
+    refs.exWorkoutCalendar?.addEventListener("click", (e) => {
+      const cell = e.target.closest("[data-edit-workout]");
+      if (!cell) return;
+      const [dKey, wId] = cell.dataset.editWorkout.split("|");
+      openExWorkoutEditModal(dKey, wId);
+    });
+    refs.exSaveWorkoutEditBtn?.addEventListener("click", () => handleSaveWorkoutEdit());
+    refs.exDeleteWorkoutBtn?.addEventListener("click", () => handleDeleteWorkout());
+    refs.exCloseWorkoutEditBtn?.addEventListener("click", () => refs.exWorkoutEditModal.close());
+    refs.exWorkoutEditTypeButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        refs.exWorkoutEditTypeButtons.forEach((b) => b.classList.toggle("active", b === btn));
+      });
+    });
+    [refs.exWorkoutEditWeight, refs.exWorkoutEditReps].forEach((input) => {
+      input?.addEventListener("input", () => {
+        const w = Number(refs.exWorkoutEditWeight.value);
+        const r = Math.floor(Number(refs.exWorkoutEditReps.value));
+        if (refs.exWorkoutEditE1rm) {
+          if (Number.isFinite(w) && w > 0 && Number.isFinite(r) && r >= 1) {
+            refs.exWorkoutEditE1rm.textContent = `Estimated 1RM: ${formatNumber(roundTo(calcE1rm(w, r), 1))} kg`;
+          } else {
+            refs.exWorkoutEditE1rm.textContent = "";
+          }
+        }
+      });
+    });
+
+    // -- WEIGHT --
+    refs.exAddWeightBtn?.addEventListener("click", () => handleAddWeight());
+    refs.exWeightInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleAddWeight();
+      }
+    });
+    refs.exWeightRangeButtons?.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const v = btn.dataset.weightRange;
+        exUi.weightRangeDays = v === "all" ? "all" : Number(v);
+        renderExWeightSection();
+      });
+    });
+    refs.exWeightHistory?.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-delete-weight]");
+      if (!btn) return;
+      const dKey = btn.dataset.deleteWeight;
+      if (!dKey) return;
+      if (window.confirm(`Delete weight log for ${dKey}?`)) {
+        exDeleteWeight(dKey);
+        renderExSnapshot();
+        renderExWeightSection();
+        showToast("Weight log deleted.");
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Handlers
+  // ---------------------------------------------------------------------------
+  function handleAddMeal() {
+    const calories = Number(refs.exMealCaloriesInput.value);
+    const protein = Number(refs.exMealProteinInput.value);
+    if ((!Number.isFinite(calories) || calories <= 0) && (!Number.isFinite(protein) || protein <= 0)) {
+      showToast("Add at least calories or protein.");
+      return;
+    }
+    const result = exAddMeal({
+      mealType: exUi.selectedMealType,
+      calories,
+      protein,
+      note: refs.exMealNoteInput.value,
+      dateKey: refs.exMealDateInput.value,
+    });
+    if (!result) {
+      showToast("Couldn't add meal.");
+      return;
+    }
+    refs.exMealCaloriesInput.value = "";
+    refs.exMealProteinInput.value = "";
+    refs.exMealNoteInput.value = "";
+    renderExSnapshot();
+    renderExMealsList();
+    renderExCaloriesChart();
+    const day = result.dateKey === todayKey() ? "today" : result.dateKey;
+    showToast(`Added ${MEAL_LABELS[result.meal.mealType]} (${day}).`);
+  }
+
+  function openExMealEditModal(dateKey, mealId) {
+    const list = state.exercise.meals[dateKey] || [];
+    const meal = list.find((m) => m.id === mealId);
+    if (!meal) return;
+    exUi.editingMealKey = `${dateKey}|${mealId}`;
+    refs.exMealEditMeta.textContent = `Logged ${dateKey}`;
+    refs.exMealEditCalories.value = meal.calories;
+    refs.exMealEditProtein.value = meal.protein;
+    refs.exMealEditDate.value = dateKey;
+    refs.exMealEditNote.value = meal.note;
+    refs.exMealEditTypeButtons.forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.editMealType === meal.mealType);
+    });
+    refs.exMealEditModal.showModal();
+  }
+
+  function handleSaveMealEdit() {
+    if (!exUi.editingMealKey) return;
+    const [dateKey, mealId] = exUi.editingMealKey.split("|");
+    const activeType = refs.exMealEditTypeButtons.find((b) => b.classList.contains("active"));
+    exUpdateMeal(dateKey, mealId, {
+      mealType: activeType?.dataset.editMealType,
+      calories: Number(refs.exMealEditCalories.value),
+      protein: Number(refs.exMealEditProtein.value),
+      note: refs.exMealEditNote.value,
+      dateKey: refs.exMealEditDate.value,
+    });
+    refs.exMealEditModal.close();
+    exUi.editingMealKey = "";
+    renderExSnapshot();
+    renderExMealsList();
+    renderExCaloriesChart();
+    showToast("Meal updated.");
+  }
+
+  function handleDeleteMeal() {
+    if (!exUi.editingMealKey) return;
+    const [dateKey, mealId] = exUi.editingMealKey.split("|");
+    if (!window.confirm("Delete this meal?")) return;
+    exDeleteMeal(dateKey, mealId);
+    refs.exMealEditModal.close();
+    exUi.editingMealKey = "";
+    renderExSnapshot();
+    renderExMealsList();
+    renderExCaloriesChart();
+    showToast("Meal deleted.");
+  }
+
+  function handleSaveNewExercise() {
+    const name = refs.exNewExerciseName.value;
+    const created = exAddExercise(name);
+    if (!created) {
+      showToast("Enter a name for the exercise.");
+      return;
+    }
+    refs.exNewExerciseName.value = "";
+    refs.exAddExerciseDetails.open = false;
+    populateExerciseSelect(refs.exWorkoutExerciseSelect);
+    populateExerciseSelect(refs.exProgressionExerciseSelect);
+    populateExerciseSelect(refs.exWorkoutEditExercise);
+    refs.exWorkoutExerciseSelect.value = created.id;
+    if (refs.exStatExerciseCount) {
+      refs.exStatExerciseCount.textContent = String(state.exercise.exercises.length);
+    }
+    showToast(`Exercise "${created.name}" saved.`);
+  }
+
+  function handleAddWorkout() {
+    const weight = Number(refs.exWorkoutWeightInput.value);
+    const reps = Math.floor(Number(refs.exWorkoutRepsInput.value));
+    if (!Number.isFinite(weight) || weight <= 0 || !Number.isFinite(reps) || reps < 1) {
+      showToast("Enter a valid weight and reps.");
+      return;
+    }
+    const exerciseId = refs.exWorkoutExerciseSelect.value;
+    const result = exAddWorkout({
+      type: exUi.selectedWorkoutType,
+      exerciseId,
+      weight,
+      reps,
+      dateKey: refs.exWorkoutDateInput.value,
+    });
+    if (!result) {
+      showToast("Couldn't log workout.");
+      return;
+    }
+    refs.exWorkoutWeightInput.value = "";
+    refs.exWorkoutRepsInput.value = "";
+    renderExE1rmPreview();
+    renderExSnapshot();
+    renderExWorkoutStats();
+    renderExWorkoutCalendar();
+    if (exUi.selectedProgressionExerciseId === exerciseId) renderExProgressionChart();
+    const day = result.dateKey === todayKey() ? "today" : result.dateKey;
+    showToast(`Workout logged (${day}) · e1RM ${formatNumber(roundTo(result.workout.e1rm, 1))} kg.`);
+  }
+
+  function openExWorkoutEditModal(dateKey, workoutId) {
+    const list = state.exercise.workouts[dateKey] || [];
+    const w = list.find((x) => x.id === workoutId);
+    if (!w) return;
+    exUi.editingWorkoutKey = `${dateKey}|${workoutId}`;
+    refs.exWorkoutEditMeta.textContent = `Logged ${dateKey}`;
+    populateExerciseSelect(refs.exWorkoutEditExercise);
+    refs.exWorkoutEditExercise.value = w.exerciseId;
+    refs.exWorkoutEditWeight.value = w.weight;
+    refs.exWorkoutEditReps.value = w.reps;
+    refs.exWorkoutEditDate.value = dateKey;
+    refs.exWorkoutEditE1rm.textContent = `Estimated 1RM: ${formatNumber(roundTo(w.e1rm, 1))} kg`;
+    refs.exWorkoutEditTypeButtons.forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.editWorkoutType === w.type);
+    });
+    refs.exWorkoutEditModal.showModal();
+  }
+
+  function handleSaveWorkoutEdit() {
+    if (!exUi.editingWorkoutKey) return;
+    const [dateKey, workoutId] = exUi.editingWorkoutKey.split("|");
+    const activeType = refs.exWorkoutEditTypeButtons.find((b) => b.classList.contains("active"));
+    exUpdateWorkout(dateKey, workoutId, {
+      type: activeType?.dataset.editWorkoutType,
+      exerciseId: refs.exWorkoutEditExercise.value,
+      weight: Number(refs.exWorkoutEditWeight.value),
+      reps: Math.floor(Number(refs.exWorkoutEditReps.value)),
+      dateKey: refs.exWorkoutEditDate.value,
+    });
+    refs.exWorkoutEditModal.close();
+    exUi.editingWorkoutKey = "";
+    renderExSnapshot();
+    renderExWorkoutStats();
+    renderExWorkoutCalendar();
+    renderExProgressionChart();
+    showToast("Workout updated.");
+  }
+
+  function handleDeleteWorkout() {
+    if (!exUi.editingWorkoutKey) return;
+    const [dateKey, workoutId] = exUi.editingWorkoutKey.split("|");
+    if (!window.confirm("Delete this workout?")) return;
+    exDeleteWorkout(dateKey, workoutId);
+    refs.exWorkoutEditModal.close();
+    exUi.editingWorkoutKey = "";
+    renderExSnapshot();
+    renderExWorkoutStats();
+    renderExWorkoutCalendar();
+    renderExProgressionChart();
+    showToast("Workout deleted.");
+  }
+
+  function handleAddWeight() {
+    const kg = Number(refs.exWeightInput.value);
+    if (!Number.isFinite(kg) || kg <= 0) {
+      showToast("Enter a valid weight.");
+      return;
+    }
+    const result = exAddWeight({ kg, dateKey: refs.exWeightDateInput.value });
+    if (!result) {
+      showToast("Couldn't log weight.");
+      return;
+    }
+    refs.exWeightInput.value = "";
+    renderExSnapshot();
+    renderExWeightSection();
+    const day = result.dateKey === todayKey() ? "today" : result.dateKey;
+    showToast(`Weight ${formatNumber(result.kg)} kg logged (${day}).`);
+  }
+
+  function openExGoalsModal() {
+    refs.exGoalCaloriesInput.value = state.exercise.goals.calories;
+    refs.exGoalProteinInput.value = state.exercise.goals.protein;
+    refs.exGoalsModal.showModal();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Small formatting helpers
+  // ---------------------------------------------------------------------------
+  function formatNumber(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return "0";
+    if (Math.abs(v) >= 1000) return v.toLocaleString("en-US", { maximumFractionDigits: 1 });
+    return String(roundTo(v, 1)).replace(/\.0$/, "");
+  }
+
+  function truncate(str, max) {
+    const s = String(str || "");
+    return s.length > max ? s.slice(0, max - 1) + "…" : s;
   }
 })();
