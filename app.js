@@ -117,6 +117,7 @@
     weightRangeDays: 30,
     editingMealKey: "",
     editingWorkoutKey: "",
+    dayWorkoutsModalDate: "",
   };
 
   const DEFAULT_HABITS = [
@@ -406,6 +407,14 @@
     exSaveMealEditBtn: byId("exSaveMealEditBtn"),
     exDeleteMealBtn: byId("exDeleteMealBtn"),
     exCloseMealEditBtn: byId("exCloseMealEditBtn"),
+
+    // Day-workouts modal (multi-lift list)
+    exDayWorkoutsModal: byId("exDayWorkoutsModal"),
+    exDayWorkoutsTitle: byId("exDayWorkoutsTitle"),
+    exDayWorkoutsMeta: byId("exDayWorkoutsMeta"),
+    exDayWorkoutsList: byId("exDayWorkoutsList"),
+    exAddAnotherLiftBtn: byId("exAddAnotherLiftBtn"),
+    exCloseDayWorkoutsBtn: byId("exCloseDayWorkoutsBtn"),
 
     // Workout edit modal
     exWorkoutEditModal: byId("exWorkoutEditModal"),
@@ -3588,11 +3597,15 @@
         const icon = MEAL_ICONS[m.mealType];
         const label = MEAL_LABELS[m.mealType];
         const note = m.note ? `<p class="ex-meal-note">${escapeHtml(m.note)}</p>` : "";
+        const time = formatTimeOfDay(m.createdAt);
+        const labelLine = time
+          ? `${label}<span class="ex-meal-time"> · ${time}</span>`
+          : label;
         return `
           <button class="ex-meal-row" type="button" data-edit-meal="${escapeHtmlAttr(date)}|${escapeHtmlAttr(m.id)}" style="--meal-color:${color}">
             <span class="ex-meal-icon" aria-hidden="true">${icon}</span>
             <span class="ex-meal-body">
-              <span class="ex-meal-label">${label}</span>
+              <span class="ex-meal-label">${labelLine}</span>
               ${note}
             </span>
             <span class="ex-meal-stats">
@@ -3843,9 +3856,19 @@
         const groupsLabel = groups.length
           ? groups.map((g) => MUSCLE_GROUP_LABELS[g]).join(" · ")
           : "—";
+        // If there are multiple lifts on this day, route to a list modal that
+        // shows them all. Single-lift days keep going straight to the edit form.
+        const extra = list.length - 1;
+        const moreBadge = extra > 0
+          ? `<span class="ex-day-more-badge" title="${extra} more lift${extra === 1 ? "" : "s"} this day">+${extra}</span>`
+          : "";
+        const clickAttr = list.length > 1
+          ? `data-open-day-workouts="${escapeHtmlAttr(dKey)}"`
+          : `data-edit-workout="${escapeHtmlAttr(dKey)}|${escapeHtmlAttr(best.id)}"`;
         return `
-          <button class="ex-day-cell filled${todayClass}" type="button" data-edit-workout="${escapeHtmlAttr(dKey)}|${escapeHtmlAttr(best.id)}" style="--type-color:${color}">
+          <button class="ex-day-cell filled${todayClass}" type="button" ${clickAttr} style="--type-color:${color}">
             ${monthPill}
+            ${moreBadge}
             <span class="ex-day-num">${dayNum}</span>
             <span class="ex-day-type" title="${escapeHtmlAttr(groupsLabel)}">${escapeHtml(groupsLabel)}</span>
             <span class="ex-day-pr">${formatNumber(best.weight)}×${best.reps}</span>
@@ -4282,11 +4305,28 @@
       handleDeleteCustomExercise(btn.dataset.deleteExercise);
     });
     refs.exWorkoutCalendar?.addEventListener("click", (e) => {
-      const cell = e.target.closest("[data-edit-workout]");
-      if (!cell) return;
-      const [dKey, wId] = cell.dataset.editWorkout.split("|");
-      openExWorkoutEditModal(dKey, wId);
+      const dayCell = e.target.closest("[data-open-day-workouts]");
+      if (dayCell) {
+        openExDayWorkoutsModal(dayCell.dataset.openDayWorkouts);
+        return;
+      }
+      const editCell = e.target.closest("[data-edit-workout]");
+      if (editCell) {
+        const [dKey, wId] = editCell.dataset.editWorkout.split("|");
+        openExWorkoutEditModal(dKey, wId);
+      }
     });
+    refs.exCloseDayWorkoutsBtn?.addEventListener("click", () => refs.exDayWorkoutsModal.close());
+    refs.exAddAnotherLiftBtn?.addEventListener("click", () => handleAddAnotherLift());
+    refs.exDayWorkoutsList?.addEventListener("click", (e) => {
+      const editBtn = e.target.closest("[data-edit-day-workout]");
+      if (editBtn) {
+        const [dKey, wId] = editBtn.dataset.editDayWorkout.split("|");
+        refs.exDayWorkoutsModal.close();
+        openExWorkoutEditModal(dKey, wId);
+      }
+    });
+
     refs.exSaveWorkoutEditBtn?.addEventListener("click", () => handleSaveWorkoutEdit());
     refs.exDeleteWorkoutBtn?.addEventListener("click", () => handleDeleteWorkout());
     refs.exCloseWorkoutEditBtn?.addEventListener("click", () => refs.exWorkoutEditModal.close());
@@ -4378,7 +4418,10 @@
     const meal = list.find((m) => m.id === mealId);
     if (!meal) return;
     exUi.editingMealKey = `${dateKey}|${mealId}`;
-    refs.exMealEditMeta.textContent = `Logged ${dateKey}`;
+    const time = formatTimeOfDay(meal.createdAt);
+    refs.exMealEditMeta.textContent = time
+      ? `Logged ${dateKey} at ${time}`
+      : `Logged ${dateKey}`;
     refs.exMealEditCalories.value = meal.calories;
     refs.exMealEditProtein.value = meal.protein;
     refs.exMealEditDate.value = dateKey;
@@ -4494,6 +4537,65 @@
     showToast(`Workout logged (${day}) · e1RM ${formatNumber(roundTo(result.workout.e1rm, 1))} kg.`);
   }
 
+  function openExDayWorkoutsModal(dateKey) {
+    const list = (state.exercise.workouts[dateKey] || [])
+      .slice()
+      .sort((a, b) => b.e1rm - a.e1rm);
+    if (!refs.exDayWorkoutsModal || !list.length) return;
+    refs.exDayWorkoutsTitle.textContent =
+      dateKey === todayKey() ? "Today's lifts" : "Lifts on " + dateKey;
+    refs.exDayWorkoutsMeta.textContent = `${list.length} lift${list.length === 1 ? "" : "s"} logged`;
+    const ex = state.exercise;
+    refs.exDayWorkoutsList.innerHTML = list
+      .map((w) => {
+        const groups = w.muscleGroups || [];
+        const color = groups.length ? MUSCLE_GROUP_COLORS[groups[0]] : "#5b6173";
+        const groupsLabel = groups.length
+          ? groups.map((g) => MUSCLE_GROUP_LABELS[g]).join(" · ")
+          : "—";
+        const exercise = ex.exercises.find((e) => e.id === w.exerciseId);
+        const exName = exercise ? exercise.name : "(unknown exercise)";
+        return `
+          <button class="ex-day-workout-row" type="button"
+                  data-edit-day-workout="${escapeHtmlAttr(dateKey)}|${escapeHtmlAttr(w.id)}"
+                  style="--row-color:${color}">
+            <span class="ex-day-workout-main">
+              <span class="ex-day-workout-exname">${escapeHtml(exName)}</span>
+              <span class="ex-day-workout-groups muted">${escapeHtml(groupsLabel)}</span>
+            </span>
+            <span class="ex-day-workout-stats">
+              <span class="ex-day-workout-pr">${formatNumber(w.weight)} × ${w.reps}</span>
+              <span class="ex-day-workout-e1rm muted">${formatNumber(roundTo(w.e1rm, 1))} kg e1RM</span>
+            </span>
+          </button>
+        `;
+      })
+      .join("");
+    exUi.dayWorkoutsModalDate = dateKey;
+    refs.exDayWorkoutsModal.showModal();
+  }
+
+  function handleAddAnotherLift() {
+    const dateKey = exUi.dayWorkoutsModalDate;
+    refs.exDayWorkoutsModal.close();
+    if (dateKey && refs.exWorkoutDateInput) {
+      refs.exWorkoutDateInput.value = dateKey;
+    }
+    // Clear inputs so the user starts fresh.
+    if (refs.exWorkoutWeightInput) refs.exWorkoutWeightInput.value = "";
+    if (refs.exWorkoutRepsInput) refs.exWorkoutRepsInput.value = "";
+    exUi.selectedMuscleGroups.clear();
+    syncMuscleGroupButtons();
+    renderExE1rmPreview();
+    // Scroll the form into view + briefly highlight it so the move is obvious.
+    refs.exWorkoutsSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+    showToast(
+      dateKey === todayKey()
+        ? "Add another lift below."
+        : `Adding a lift for ${dateKey} — fill the form below.`,
+    );
+  }
+
   function openExWorkoutEditModal(dateKey, workoutId) {
     const list = state.exercise.workouts[dateKey] || [];
     const w = list.find((x) => x.id === workoutId);
@@ -4594,5 +4696,12 @@
 
   function formatDateShort(date) {
     return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  }
+
+  function formatTimeOfDay(isoString) {
+    if (!isoString) return "";
+    const d = new Date(isoString);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
   }
 })();

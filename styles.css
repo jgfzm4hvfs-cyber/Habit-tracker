@@ -2885,6 +2885,12 @@ textarea {
   font-size: 0.92rem;
 }
 
+.ex-meal-time {
+  color: var(--text-soft);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
 .ex-meal-note {
   font-size: 0.78rem;
   color: var(--text-soft);
@@ -3119,6 +3125,92 @@ textarea {
   border-radius: 999px;
   text-transform: uppercase;
   pointer-events: none;
+}
+
+/* "+2" badge in the top-right of a day cell when that day has more than one
+   logged lift. Tapping the cell opens the day-workouts modal. */
+.ex-day-more-badge {
+  position: absolute;
+  top: -8px;
+  right: 6px;
+  background: var(--type-color, var(--primary));
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 999px;
+  pointer-events: none;
+  box-shadow: 0 2px 6px -3px rgba(12, 12, 19, 0.4);
+}
+
+/* Day workouts modal — lists all lifts for a single day. */
+.ex-day-workouts-list {
+  display: grid;
+  gap: 0.4rem;
+  max-height: min(50vh, 400px);
+  overflow: auto;
+  padding-right: 0.1rem;
+}
+
+.ex-day-workout-row {
+  appearance: none;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--row-color, var(--primary));
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 0.55rem 0.7rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: background var(--dur-quick) var(--ease-smooth), transform var(--dur-quick) var(--ease-out-quint);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ex-day-workout-row:hover {
+  background: #fff;
+}
+
+.ex-day-workout-row:active {
+  transform: scale(0.99);
+}
+
+.ex-day-workout-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ex-day-workout-exname {
+  font-weight: 700;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ex-day-workout-groups {
+  font-size: 0.74rem;
+}
+
+.ex-day-workout-stats {
+  display: grid;
+  gap: 1px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ex-day-workout-pr {
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+
+.ex-day-workout-e1rm {
+  font-size: 0.72rem;
 }
 
 .ex-day-cell {
