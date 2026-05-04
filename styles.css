@@ -3152,6 +3152,55 @@ textarea {
   text-overflow: ellipsis;
 }
 
+/* Muscle group frequency: at-a-glance "am I neglecting any group?" view. */
+.ex-muscle-freq-list {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.ex-muscle-freq-row {
+  display: grid;
+  grid-template-columns: minmax(72px, auto) 1fr auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.42rem 0.6rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--row-color, var(--line));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+}
+
+.ex-muscle-freq-name {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ex-muscle-freq-bar {
+  height: 8px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 999px;
+  overflow: hidden;
+  min-width: 50px;
+}
+
+.ex-muscle-freq-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width var(--dur-med) var(--ease-out-expo);
+}
+
+.ex-muscle-freq-val {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.ex-muscle-freq-val.zero {
+  opacity: 0.55;
+}
+
 .ex-inline-select {
   appearance: none;
   -webkit-appearance: none;

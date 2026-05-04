@@ -375,6 +375,7 @@
     exStatMonthCount: byId("exStatMonthCount"),
     exStatExerciseCount: byId("exStatExerciseCount"),
     exWorkoutCalendar: byId("exWorkoutCalendar"),
+    exMuscleFrequencyList: byId("exMuscleFrequencyList"),
     exProgressionChart: byId("exProgressionChart"),
     exProgressionLegend: byId("exProgressionLegend"),
 
@@ -3708,6 +3709,7 @@
     renderExE1rmPreview();
     renderExWorkoutStats();
     renderExWorkoutCalendar();
+    renderExMuscleFrequency();
     renderExProgressionChart();
   }
 
@@ -3853,6 +3855,54 @@
       })
       .join("");
     refs.exWorkoutCalendar.innerHTML = cells;
+  }
+
+  function renderExMuscleFrequency() {
+    if (!refs.exMuscleFrequencyList) return;
+    const ex = state.exercise;
+    const WINDOW_DAYS = 28;
+    const WEEKS = WINDOW_DAYS / 7;
+    const days = lastNDateKeys(WINDOW_DAYS);
+
+    const counts = Object.fromEntries(MUSCLE_GROUPS.map((g) => [g, 0]));
+    let totalWorkouts = 0;
+    days.forEach((dKey) => {
+      const list = ex.workouts[dKey] || [];
+      totalWorkouts += list.length;
+      list.forEach((w) => {
+        (w.muscleGroups || []).forEach((g) => {
+          if (counts[g] !== undefined) counts[g] += 1;
+        });
+      });
+    });
+
+    if (totalWorkouts === 0) {
+      refs.exMuscleFrequencyList.innerHTML =
+        '<p class="ex-empty">No workouts logged in the last 4 weeks. Log one to see how often each muscle group gets trained.</p>';
+      return;
+    }
+
+    // Sort by count desc so neglected groups land at the bottom — easy to spot.
+    const rows = MUSCLE_GROUPS
+      .map((g) => ({ group: g, count: counts[g], perWeek: counts[g] / WEEKS }))
+      .sort((a, b) => b.count - a.count);
+
+    const maxCount = Math.max(1, ...rows.map((r) => r.count));
+
+    refs.exMuscleFrequencyList.innerHTML = rows
+      .map((r) => {
+        const color = MUSCLE_GROUP_COLORS[r.group];
+        const pct = (r.count / maxCount) * 100;
+        const valueClass = r.count === 0 ? "ex-muscle-freq-val zero" : "ex-muscle-freq-val";
+        return `
+          <div class="ex-muscle-freq-row" style="--row-color:${color}">
+            <span class="ex-muscle-freq-name">${MUSCLE_GROUP_LABELS[r.group]}</span>
+            <div class="ex-muscle-freq-bar"><div class="ex-muscle-freq-fill" style="width:${pct}%;background:${color}"></div></div>
+            <span class="${valueClass}"><strong>${r.perWeek.toFixed(1)}</strong> <span class="muted">/ wk</span></span>
+          </div>
+        `;
+      })
+      .join("");
   }
 
   function renderExProgressionChart() {
