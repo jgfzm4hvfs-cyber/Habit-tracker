@@ -376,6 +376,7 @@
     exStatExerciseCount: byId("exStatExerciseCount"),
     exWorkoutCalendar: byId("exWorkoutCalendar"),
     exMuscleFrequencyList: byId("exMuscleFrequencyList"),
+    exMuscleFrequencyMeta: byId("exMuscleFrequencyMeta"),
     exProgressionChart: byId("exProgressionChart"),
     exProgressionLegend: byId("exProgressionLegend"),
 
@@ -3860,9 +3861,19 @@
   function renderExMuscleFrequency() {
     if (!refs.exMuscleFrequencyList) return;
     const ex = state.exercise;
-    const WINDOW_DAYS = 28;
-    const WEEKS = WINDOW_DAYS / 7;
-    const days = lastNDateKeys(WINDOW_DAYS);
+
+    // Adaptive window: 7-day floor (so brand-new users see meaningful numbers
+    // from day 1), 28-day cap (so ancient history doesn't dilute the rate
+    // forever), and in between we grow with the user's actual logging history.
+    const FLOOR = 7;
+    const CAP = 28;
+    const firstKey = findFirstWorkoutDateKey(ex);
+    const today = todayKey();
+    const daysSinceFirst = firstKey ? daysBetween(firstKey, today) + 1 : 0;
+    const effectiveDays = Math.max(FLOOR, Math.min(CAP, daysSinceFirst || FLOOR));
+    const weeks = effectiveDays / 7;
+
+    const days = lastNDateKeys(effectiveDays);
 
     const counts = Object.fromEntries(MUSCLE_GROUPS.map((g) => [g, 0]));
     let totalWorkouts = 0;
@@ -3876,15 +3887,24 @@
       });
     });
 
+    // Subtitle reflects the actual window so the user knows what the rate is
+    // based on (e.g. "Last 5 days · sessions / week" while they're new).
+    if (refs.exMuscleFrequencyMeta) {
+      refs.exMuscleFrequencyMeta.textContent =
+        effectiveDays === 28
+          ? "Last 4 weeks · sessions / week"
+          : `Last ${effectiveDays} days · sessions / week`;
+    }
+
     if (totalWorkouts === 0) {
       refs.exMuscleFrequencyList.innerHTML =
-        '<p class="ex-empty">No workouts logged in the last 4 weeks. Log one to see how often each muscle group gets trained.</p>';
+        '<p class="ex-empty">Log a workout to see how often each muscle group gets trained.</p>';
       return;
     }
 
     // Sort by count desc so neglected groups land at the bottom — easy to spot.
     const rows = MUSCLE_GROUPS
-      .map((g) => ({ group: g, count: counts[g], perWeek: counts[g] / WEEKS }))
+      .map((g) => ({ group: g, count: counts[g], perWeek: counts[g] / weeks }))
       .sort((a, b) => b.count - a.count);
 
     const maxCount = Math.max(1, ...rows.map((r) => r.count));
@@ -3903,6 +3923,15 @@
         `;
       })
       .join("");
+  }
+
+  function findFirstWorkoutDateKey(ex) {
+    const keys = Object.keys(ex.workouts).filter(
+      (k) => Array.isArray(ex.workouts[k]) && ex.workouts[k].length > 0,
+    );
+    if (keys.length === 0) return null;
+    keys.sort();
+    return keys[0];
   }
 
   function renderExProgressionChart() {
