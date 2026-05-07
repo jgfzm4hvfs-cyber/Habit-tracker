@@ -3300,6 +3300,11 @@ textarea {
   opacity: 0.55;
 }
 
+.ex-muscle-freq-val.never {
+  color: var(--danger);
+  font-weight: 800;
+}
+
 .ex-inline-select {
   appearance: none;
   -webkit-appearance: none;

@@ -58,7 +58,7 @@
   };
   const MUSCLE_GROUPS = [
     "legs",
-    "lowerback",
+    "marklift",
     "back",
     "shoulders",
     "triceps",
@@ -68,7 +68,7 @@
   ];
   const MUSCLE_GROUP_LABELS = {
     legs: "Legs",
-    lowerback: "Lower back",
+    marklift: "Markløft",
     back: "Back",
     shoulders: "Shoulders",
     triceps: "Triceps",
@@ -78,7 +78,7 @@
   };
   const MUSCLE_GROUP_COLORS = {
     legs: "#d7842c",
-    lowerback: "#8b6a35",
+    marklift: "#8b6a35",
     back: "#2563d2",
     shoulders: "#2f94bc",
     triceps: "#6a5cb6",
@@ -92,9 +92,14 @@
     push: ["pecs", "triceps", "shoulders"],
     pull: ["back", "biceps"],
     upper: ["pecs", "back", "shoulders", "triceps", "biceps"],
-    lower: ["legs", "lowerback"],
+    lower: ["legs", "marklift"],
     legs: ["legs"],
     other: [],
+  };
+  // Migration: any pre-existing workouts that used "lowerback" as a muscle
+  // group should be remapped to "marklift" on load.
+  const MUSCLE_GROUP_RENAMES = {
+    lowerback: "marklift",
   };
   const DEFAULT_EXERCISES = [
     { id: "ex_benkpress", name: "Benkpress", builtin: true },
@@ -378,6 +383,7 @@
     exWorkoutCalendar: byId("exWorkoutCalendar"),
     exMuscleFrequencyList: byId("exMuscleFrequencyList"),
     exMuscleFrequencyMeta: byId("exMuscleFrequencyMeta"),
+    exDaysSinceList: byId("exDaysSinceList"),
     exProgressionChart: byId("exProgressionChart"),
     exProgressionLegend: byId("exProgressionLegend"),
 
@@ -3161,7 +3167,9 @@
     // so workouts logged before this change keep their meaning.
     let muscleGroups;
     if (Array.isArray(raw.muscleGroups)) {
-      muscleGroups = raw.muscleGroups.filter((g) => MUSCLE_GROUPS.includes(g));
+      muscleGroups = raw.muscleGroups
+        .map((g) => MUSCLE_GROUP_RENAMES[g] || g)
+        .filter((g) => MUSCLE_GROUPS.includes(g));
     } else if (raw.type && LEGACY_TYPE_TO_GROUPS[raw.type]) {
       muscleGroups = LEGACY_TYPE_TO_GROUPS[raw.type].slice();
     } else {
@@ -3724,7 +3732,19 @@
     renderExWorkoutStats();
     renderExWorkoutCalendar();
     renderExMuscleFrequency();
+    renderExDaysSinceTrained();
     renderExProgressionChart();
+    updateAddWorkoutButtonLabel();
+  }
+
+  // Switches the primary action label to "+ Add another PR" once at least one
+  // lift has been logged for the form's selected date — makes it obvious you
+  // can stack multiple PRs on the same session.
+  function updateAddWorkoutButtonLabel() {
+    if (!refs.exAddWorkoutBtn || !refs.exWorkoutDateInput) return;
+    const dKey = refs.exWorkoutDateInput.value || todayKey();
+    const count = isValidDateKey(dKey) ? (state.exercise.workouts[dKey] || []).length : 0;
+    refs.exAddWorkoutBtn.textContent = count > 0 ? "＋ Add another PR" : "＋ Log workout";
   }
 
   function syncMuscleGroupButtons() {
@@ -3777,8 +3797,8 @@
 
   function renderExE1rmPreview() {
     if (!refs.exWorkoutE1rmPreview) return;
-    const w = Number(refs.exWorkoutWeightInput?.value);
-    const r = Math.floor(Number(refs.exWorkoutRepsInput?.value));
+    const w = parseLocaleNumber(refs.exWorkoutWeightInput?.value);
+    const r = Math.floor(parseLocaleNumber(refs.exWorkoutRepsInput?.value));
     if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(r) || r < 1) {
       refs.exWorkoutE1rmPreview.textContent = "Estimated 1RM appears here as you type.";
       refs.exWorkoutE1rmPreview.classList.add("muted");
@@ -3942,6 +3962,59 @@
             <span class="ex-muscle-freq-name">${MUSCLE_GROUP_LABELS[r.group]}</span>
             <div class="ex-muscle-freq-bar"><div class="ex-muscle-freq-fill" style="width:${pct}%;background:${color}"></div></div>
             <span class="${valueClass}"><strong>${r.perWeek.toFixed(1)}</strong> <span class="muted">/ wk</span></span>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  function renderExDaysSinceTrained() {
+    if (!refs.exDaysSinceList) return;
+    const ex = state.exercise;
+    const today = todayKey();
+
+    // Find most-recent date per group.
+    const lastTrained = Object.fromEntries(MUSCLE_GROUPS.map((g) => [g, null]));
+    Object.keys(ex.workouts).forEach((dKey) => {
+      const list = ex.workouts[dKey] || [];
+      list.forEach((w) => {
+        (w.muscleGroups || []).forEach((g) => {
+          if (!lastTrained.hasOwnProperty(g)) return;
+          if (!lastTrained[g] || dKey > lastTrained[g]) lastTrained[g] = dKey;
+        });
+      });
+    });
+
+    const rows = MUSCLE_GROUPS.map((g) => {
+      const last = lastTrained[g];
+      const days = last ? daysBetween(last, today) : Infinity;
+      return { group: g, last, days };
+    }).sort((a, b) => b.days - a.days);
+
+    refs.exDaysSinceList.innerHTML = rows
+      .map((r) => {
+        const color = MUSCLE_GROUP_COLORS[r.group];
+        let valueText;
+        let valueClass = "ex-muscle-freq-val";
+        if (r.last == null) {
+          valueText = "Never";
+          valueClass += " never";
+        } else if (r.days === 0) {
+          valueText = "Today";
+        } else if (r.days === 1) {
+          valueText = "Yesterday";
+        } else {
+          valueText = `${r.days} days ago`;
+        }
+        // Bar visualizes "how stale is it" — full bar = never trained, empty
+        // bar = trained today.
+        const maxDays = Math.max(1, ...rows.filter((x) => x.days !== Infinity).map((x) => x.days), 7);
+        const pct = r.last == null ? 100 : Math.min(100, (r.days / maxDays) * 100);
+        return `
+          <div class="ex-muscle-freq-row" style="--row-color:${color}">
+            <span class="ex-muscle-freq-name">${MUSCLE_GROUP_LABELS[r.group]}</span>
+            <div class="ex-muscle-freq-bar"><div class="ex-muscle-freq-fill" style="width:${pct}%;background:${color}"></div></div>
+            <span class="${valueClass}">${valueText}</span>
           </div>
         `;
       })
@@ -4291,6 +4364,7 @@
     });
     refs.exWorkoutWeightInput?.addEventListener("input", renderExE1rmPreview);
     refs.exWorkoutRepsInput?.addEventListener("input", renderExE1rmPreview);
+    refs.exWorkoutDateInput?.addEventListener("change", updateAddWorkoutButtonLabel);
     refs.exAddWorkoutBtn?.addEventListener("click", () => handleAddWorkout());
     refs.exSaveNewExerciseBtn?.addEventListener("click", () => handleSaveNewExercise());
     refs.exNewExerciseName?.addEventListener("keydown", (e) => {
@@ -4341,8 +4415,8 @@
     });
     [refs.exWorkoutEditWeight, refs.exWorkoutEditReps].forEach((input) => {
       input?.addEventListener("input", () => {
-        const w = Number(refs.exWorkoutEditWeight.value);
-        const r = Math.floor(Number(refs.exWorkoutEditReps.value));
+        const w = parseLocaleNumber(refs.exWorkoutEditWeight.value);
+        const r = Math.floor(parseLocaleNumber(refs.exWorkoutEditReps.value));
         if (refs.exWorkoutEditE1rm) {
           if (Number.isFinite(w) && w > 0 && Number.isFinite(r) && r >= 1) {
             refs.exWorkoutEditE1rm.textContent = `Estimated 1RM: ${formatNumber(roundTo(calcE1rm(w, r), 1))} kg`;
@@ -4386,8 +4460,8 @@
   // Handlers
   // ---------------------------------------------------------------------------
   function handleAddMeal() {
-    const calories = Number(refs.exMealCaloriesInput.value);
-    const protein = Number(refs.exMealProteinInput.value);
+    const calories = parseLocaleNumber(refs.exMealCaloriesInput.value);
+    const protein = parseLocaleNumber(refs.exMealProteinInput.value);
     if ((!Number.isFinite(calories) || calories <= 0) && (!Number.isFinite(protein) || protein <= 0)) {
       showToast("Add at least calories or protein.");
       return;
@@ -4438,8 +4512,8 @@
     const activeType = refs.exMealEditTypeButtons.find((b) => b.classList.contains("active"));
     exUpdateMeal(dateKey, mealId, {
       mealType: activeType?.dataset.editMealType,
-      calories: Number(refs.exMealEditCalories.value),
-      protein: Number(refs.exMealEditProtein.value),
+      calories: parseLocaleNumber(refs.exMealEditCalories.value),
+      protein: parseLocaleNumber(refs.exMealEditProtein.value),
       note: refs.exMealEditNote.value,
       dateKey: refs.exMealEditDate.value,
     });
@@ -4505,8 +4579,8 @@
   }
 
   function handleAddWorkout() {
-    const weight = Number(refs.exWorkoutWeightInput.value);
-    const reps = Math.floor(Number(refs.exWorkoutRepsInput.value));
+    const weight = parseLocaleNumber(refs.exWorkoutWeightInput.value);
+    const reps = Math.floor(parseLocaleNumber(refs.exWorkoutRepsInput.value));
     if (!Number.isFinite(weight) || weight <= 0 || !Number.isFinite(reps) || reps < 1) {
       showToast("Enter a valid weight and reps.");
       return;
@@ -4532,9 +4606,12 @@
     renderExSnapshot();
     renderExWorkoutStats();
     renderExWorkoutCalendar();
+    renderExMuscleFrequency();
+    renderExDaysSinceTrained();
     renderExProgressionChart();
+    updateAddWorkoutButtonLabel();
     const day = result.dateKey === todayKey() ? "today" : result.dateKey;
-    showToast(`Workout logged (${day}) · e1RM ${formatNumber(roundTo(result.workout.e1rm, 1))} kg.`);
+    showToast(`PR logged (${day}) · e1RM ${formatNumber(roundTo(result.workout.e1rm, 1))} kg.`);
   }
 
   function openExDayWorkoutsModal(dateKey) {
@@ -4628,8 +4705,8 @@
     exUpdateWorkout(dateKey, workoutId, {
       muscleGroups,
       exerciseId: refs.exWorkoutEditExercise.value,
-      weight: Number(refs.exWorkoutEditWeight.value),
-      reps: Math.floor(Number(refs.exWorkoutEditReps.value)),
+      weight: parseLocaleNumber(refs.exWorkoutEditWeight.value),
+      reps: Math.floor(parseLocaleNumber(refs.exWorkoutEditReps.value)),
       dateKey: refs.exWorkoutEditDate.value,
     });
     refs.exWorkoutEditModal.close();
@@ -4637,7 +4714,10 @@
     renderExSnapshot();
     renderExWorkoutStats();
     renderExWorkoutCalendar();
+    renderExMuscleFrequency();
+    renderExDaysSinceTrained();
     renderExProgressionChart();
+    updateAddWorkoutButtonLabel();
     showToast("Workout updated.");
   }
 
@@ -4651,12 +4731,15 @@
     renderExSnapshot();
     renderExWorkoutStats();
     renderExWorkoutCalendar();
+    renderExMuscleFrequency();
+    renderExDaysSinceTrained();
     renderExProgressionChart();
+    updateAddWorkoutButtonLabel();
     showToast("Workout deleted.");
   }
 
   function handleAddWeight() {
-    const kg = Number(refs.exWeightInput.value);
+    const kg = parseLocaleNumber(refs.exWeightInput.value);
     if (!Number.isFinite(kg) || kg <= 0) {
       showToast("Enter a valid weight.");
       return;
@@ -4703,5 +4786,15 @@
     const d = new Date(isoString);
     if (Number.isNaN(d.getTime())) return "";
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+
+  // Accept both "22,5" (Norwegian) and "22.5" (English) decimal styles. Some
+  // browsers reject comma in <input type="number"> so we normalize before
+  // calling Number().
+  function parseLocaleNumber(value) {
+    if (value == null) return NaN;
+    const s = String(value).trim().replace(",", ".");
+    if (s === "") return NaN;
+    return Number(s);
   }
 })();
