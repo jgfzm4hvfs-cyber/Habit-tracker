@@ -33,7 +33,7 @@
 
       <!-- Sign-in banner (only shown when not signed in) -->
       <div id="signInBanner" class="sign-in-banner" hidden>
-        <span class="sign-in-banner-text">🔒 Sign in with Google so your habits sync across devices.</span>
+        <span class="sign-in-banner-text">üîí Sign in with Google so your habits sync across devices.</span>
         <div class="sign-in-banner-actions">
           <button id="signInBannerBtn" class="btn primary" type="button">Sign in</button>
           <button id="dismissSignInBannerBtn" class="btn ghost" type="button" aria-label="Dismiss">Later</button>
@@ -43,11 +43,11 @@
       <!-- Top-level app split: Habits app vs Exercise app -->
       <nav class="top-tab-switch card" role="tablist" aria-label="Main app">
         <button class="top-tab-btn active" type="button" data-top-tab="habits" role="tab" aria-selected="true">
-          <span class="top-tab-icon" aria-hidden="true">✅</span>
+          <span class="top-tab-icon" aria-hidden="true">‚úÖ</span>
           <span class="top-tab-label">Habits</span>
         </button>
         <button class="top-tab-btn" type="button" data-top-tab="exercise" role="tab" aria-selected="false">
-          <span class="top-tab-icon" aria-hidden="true">🏋️</span>
+          <span class="top-tab-icon" aria-hidden="true">üèãÔ∏è</span>
           <span class="top-tab-label">Exercise</span>
         </button>
       </nav>
@@ -82,9 +82,9 @@
           <button class="view-btn" data-view-mode="heatmap" type="button">Month</button>
         </div>
         <div class="nav-tools">
-          <button id="prevPeriodBtn" class="btn ghost" type="button" aria-label="Previous">‹</button>
+          <button id="prevPeriodBtn" class="btn ghost" type="button" aria-label="Previous">‚Äπ</button>
           <button id="todayBtn" class="btn ghost" type="button">Today</button>
-          <button id="nextPeriodBtn" class="btn ghost" type="button" aria-label="Next">›</button>
+          <button id="nextPeriodBtn" class="btn ghost" type="button" aria-label="Next">‚Ä∫</button>
           <p id="periodLabel" class="period-label"></p>
         </div>
       </section>
@@ -110,7 +110,7 @@
 
       <!-- =============================================================
            Exercise app (NEW)
-           Mobile-first dashboard: snapshot → calories → workouts → weight
+           Mobile-first dashboard: snapshot ‚Üí calories ‚Üí workouts ‚Üí weight
            ============================================================= -->
       <div id="exerciseApp" class="top-tab-pane" hidden>
 
@@ -122,7 +122,7 @@
               <h2 id="exSnapshotDateLabel">Sun, May 3</h2>
             </div>
             <button id="exEditGoalsBtn" class="btn ghost ex-edit-goals-btn" type="button" aria-label="Edit goals">
-              <span aria-hidden="true">⚙</span> Goals
+              <span aria-hidden="true">‚öô</span> Goals
             </button>
           </header>
 
@@ -133,7 +133,7 @@
               <div class="ex-nutri-line">
                 <div class="ex-nutri-row">
                   <span class="ex-nutri-key">Calories</span>
-                  <span class="ex-nutri-val"><span id="exTodayCalories">0</span><span class="ex-tile-divider">/</span><span id="exTodayCaloriesGoal" class="ex-tile-goal">2500</span><span id="exTodayCaloriesCheck" class="ex-tile-check" hidden>✓</span></span>
+                  <span class="ex-nutri-val"><span id="exTodayCalories">0</span><span class="ex-tile-divider">/</span><span id="exTodayCaloriesGoal" class="ex-tile-goal">2500</span><span id="exTodayCaloriesCheck" class="ex-tile-check" hidden>‚úì</span></span>
                 </div>
                 <div class="ex-progress-track"><div id="exTodayCaloriesBar" class="ex-progress-fill ex-progress-cal" style="width:0%"></div></div>
                 <p id="exTodayCaloriesRemain" class="ex-tile-sub muted">2500 kcal left</p>
@@ -141,7 +141,7 @@
               <div class="ex-nutri-line">
                 <div class="ex-nutri-row">
                   <span class="ex-nutri-key">Protein</span>
-                  <span class="ex-nutri-val"><span id="exTodayProtein">0</span><span class="ex-tile-divider">/</span><span id="exTodayProteinGoal" class="ex-tile-goal">180</span><span class="ex-tile-unit">g</span><span id="exTodayProteinCheck" class="ex-tile-check" hidden>✓</span></span>
+                  <span class="ex-nutri-val"><span id="exTodayProtein">0</span><span class="ex-tile-divider">/</span><span id="exTodayProteinGoal" class="ex-tile-goal">180</span><span class="ex-tile-unit">g</span><span id="exTodayProteinCheck" class="ex-tile-check" hidden>‚úì</span></span>
                 </div>
                 <div class="ex-progress-track"><div id="exTodayProteinBar" class="ex-progress-fill ex-progress-pro" style="width:0%"></div></div>
                 <p id="exTodayProteinRemain" class="ex-tile-sub muted">180 g left</p>
@@ -154,7 +154,7 @@
             </div>
             <div class="ex-snapshot-tile">
               <p class="ex-tile-label">Weight</p>
-              <p class="ex-tile-value"><span id="exCurrentWeight">—</span><span class="ex-tile-unit">kg</span></p>
+              <p class="ex-tile-value"><span id="exCurrentWeight">‚Äî</span><span class="ex-tile-unit">kg</span></p>
               <p id="exWeightDelta" class="ex-tile-sub muted">No log yet</p>
             </div>
           </div>
@@ -172,10 +172,10 @@
           <!-- Quick-add form -->
           <div class="ex-quickadd">
             <div class="ex-meal-tags" role="group" aria-label="Meal type">
-              <button type="button" class="ex-tag-btn active" data-meal-type="breakfast">🥞 Breakfast</button>
-              <button type="button" class="ex-tag-btn" data-meal-type="lunch">🥗 Lunch</button>
-              <button type="button" class="ex-tag-btn" data-meal-type="dinner">🍽 Dinner</button>
-              <button type="button" class="ex-tag-btn" data-meal-type="snack">🍎 Snack</button>
+              <button type="button" class="ex-tag-btn active" data-meal-type="breakfast">ü•û Breakfast</button>
+              <button type="button" class="ex-tag-btn" data-meal-type="lunch">ü•ó Lunch</button>
+              <button type="button" class="ex-tag-btn" data-meal-type="dinner">üçΩ Dinner</button>
+              <button type="button" class="ex-tag-btn" data-meal-type="snack">üçé Snack</button>
             </div>
             <div class="ex-quickadd-row">
               <label class="ex-input-wrap">
@@ -195,14 +195,14 @@
               <span class="ex-input-label">Note (optional)</span>
               <input id="exMealNoteInput" type="text" placeholder="E.g. Skyr 200g + banana" maxlength="120" />
             </label>
-            <button id="exAddMealBtn" type="button" class="btn primary ex-add-btn">＋ Add meal</button>
+            <button id="exAddMealBtn" type="button" class="btn primary ex-add-btn">Ôºã Add meal</button>
           </div>
 
           <!-- Today's entries -->
           <div class="ex-subsection">
             <header class="ex-subsection-head">
               <h3 id="exMealsListTitle">Today's meals</h3>
-              <span id="exMealsListTotals" class="ex-subsection-meta muted">0 kcal · 0 g protein</span>
+              <span id="exMealsListTotals" class="ex-subsection-meta muted">0 kcal ¬∑ 0 g protein</span>
             </header>
             <div id="exMealsList" class="ex-meals-list"></div>
           </div>
@@ -211,7 +211,7 @@
           <div class="ex-subsection">
             <header class="ex-subsection-head">
               <h3>Last 30 days</h3>
-              <span class="ex-subsection-meta muted">Stacked by meal · protein line</span>
+              <span class="ex-subsection-meta muted">Stacked by meal ¬∑ protein line</span>
             </header>
             <div id="exCaloriesChart" class="ex-chart-wrap"></div>
             <div class="ex-chart-legend">
@@ -237,7 +237,7 @@
           <div class="ex-quickadd">
             <div class="ex-meal-tags ex-workout-types" role="group" aria-label="Muscle groups (multi-select)">
               <button type="button" class="ex-tag-btn" data-muscle-group="legs">Legs</button>
-              <button type="button" class="ex-tag-btn" data-muscle-group="marklift">Markløft</button>
+              <button type="button" class="ex-tag-btn" data-muscle-group="marklift">Markl√∏ft</button>
               <button type="button" class="ex-tag-btn" data-muscle-group="back">Back</button>
               <button type="button" class="ex-tag-btn" data-muscle-group="shoulders">Shoulders</button>
               <button type="button" class="ex-tag-btn" data-muscle-group="triceps">Triceps</button>
@@ -252,7 +252,7 @@
               </label>
             </div>
             <details class="ex-add-exercise" id="exAddExerciseDetails">
-              <summary>＋ Add or manage exercises</summary>
+              <summary>Ôºã Add or manage exercises</summary>
               <div class="ex-quickadd-row">
                 <label class="ex-input-wrap ex-input-wide">
                   <span class="ex-input-label">Exercise name</span>
@@ -277,7 +277,7 @@
               </label>
             </div>
             <p id="exWorkoutE1rmPreview" class="ex-e1rm-preview muted">Estimated 1RM appears here.</p>
-            <button id="exAddWorkoutBtn" type="button" class="btn primary ex-add-btn">＋ Log workout</button>
+            <button id="exAddWorkoutBtn" type="button" class="btn primary ex-add-btn">Ôºã Log workout</button>
           </div>
 
           <!-- Stats row -->
@@ -309,7 +309,7 @@
           <div class="ex-subsection">
             <header class="ex-subsection-head">
               <h3>Muscle group frequency</h3>
-              <span id="exMuscleFrequencyMeta" class="ex-subsection-meta muted">Last 7 days · sessions / week</span>
+              <span id="exMuscleFrequencyMeta" class="ex-subsection-meta muted">Last 7 days ¬∑ sessions / week</span>
             </header>
             <div id="exMuscleFrequencyList" class="ex-muscle-freq-list"></div>
           </div>
@@ -323,12 +323,16 @@
             <div id="exDaysSinceList" class="ex-muscle-freq-list"></div>
           </div>
 
-          <!-- Per-exercise progression — all exercises overlaid, color-coded -->
+          <!-- Per-exercise progression ‚Äî all exercises overlaid, color-coded -->
           <div class="ex-subsection">
             <header class="ex-subsection-head">
               <h3>Strength progression</h3>
-              <span class="ex-subsection-meta muted">All exercises · estimated 1RM (kg)</span>
+              <div class="ex-range-switch" role="tablist" aria-label="Chart scale">
+                <button class="ex-range-btn active" type="button" data-progression-mode="percent">%</button>
+                <button class="ex-range-btn" type="button" data-progression-mode="kg">kg</button>
+              </div>
             </header>
+            <p id="exProgressionMeta" class="ex-subsection-meta muted">All exercises ¬∑ % of your first logged session</p>
             <div id="exProgressionChart" class="ex-chart-wrap"></div>
             <div id="exProgressionLegend" class="ex-chart-legend"></div>
           </div>
@@ -354,7 +358,7 @@
                 <input id="exWeightDateInput" type="date" />
               </label>
             </div>
-            <button id="exAddWeightBtn" type="button" class="btn primary ex-add-btn">＋ Log weight</button>
+            <button id="exAddWeightBtn" type="button" class="btn primary ex-add-btn">Ôºã Log weight</button>
           </div>
 
           <div class="ex-subsection">
@@ -386,7 +390,7 @@
     <aside id="sidebarDrawer" class="sidebar-drawer" aria-label="Menu" hidden>
       <header class="drawer-head">
         <h2>Menu</h2>
-        <button id="closeSidebarBtn" class="icon-btn" type="button" aria-label="Close menu">✕</button>
+        <button id="closeSidebarBtn" class="icon-btn" type="button" aria-label="Close menu">‚úï</button>
       </header>
 
       <!-- Today's quick-log -->
@@ -406,13 +410,13 @@
         </header>
         <div id="habitEditorList" class="habit-editor-list"></div>
         <details class="add-habit-details">
-          <summary>＋ Add new habit</summary>
+          <summary>Ôºã Add new habit</summary>
           <div class="habit-create">
             <label for="newHabitName">Name</label>
             <input id="newHabitName" type="text" placeholder="E.g. Read 20 min" />
 
             <label for="newHabitEmoji">Emoji</label>
-            <input id="newHabitEmoji" type="text" placeholder="📖" />
+            <input id="newHabitEmoji" type="text" placeholder="üìñ" />
 
             <label for="newHabitType">Type</label>
             <select id="newHabitType">
@@ -545,10 +549,10 @@
         </header>
 
         <div class="ex-meal-tags" role="group" aria-label="Meal type">
-          <button type="button" class="ex-tag-btn" data-edit-meal-type="breakfast">🥞 Breakfast</button>
-          <button type="button" class="ex-tag-btn" data-edit-meal-type="lunch">🥗 Lunch</button>
-          <button type="button" class="ex-tag-btn" data-edit-meal-type="dinner">🍽 Dinner</button>
-          <button type="button" class="ex-tag-btn" data-edit-meal-type="snack">🍎 Snack</button>
+          <button type="button" class="ex-tag-btn" data-edit-meal-type="breakfast">ü•û Breakfast</button>
+          <button type="button" class="ex-tag-btn" data-edit-meal-type="lunch">ü•ó Lunch</button>
+          <button type="button" class="ex-tag-btn" data-edit-meal-type="dinner">üçΩ Dinner</button>
+          <button type="button" class="ex-tag-btn" data-edit-meal-type="snack">üçé Snack</button>
         </div>
 
         <label for="exMealEditCalories">Calories</label>
@@ -583,7 +587,7 @@
         <div id="exDayWorkoutsList" class="ex-day-workouts-list"></div>
 
         <div class="button-row modal-footer">
-          <button id="exAddAnotherLiftBtn" class="btn primary" type="button">＋ Add another lift to this day</button>
+          <button id="exAddAnotherLiftBtn" class="btn primary" type="button">Ôºã Add another lift to this day</button>
           <button id="exCloseDayWorkoutsBtn" class="btn ghost" type="button">Close</button>
         </div>
       </form>
@@ -599,7 +603,7 @@
 
         <div class="ex-meal-tags ex-workout-types" role="group" aria-label="Muscle groups (multi-select)">
           <button type="button" class="ex-tag-btn" data-edit-muscle-group="legs">Legs</button>
-          <button type="button" class="ex-tag-btn" data-edit-muscle-group="marklift">Markløft</button>
+          <button type="button" class="ex-tag-btn" data-edit-muscle-group="marklift">Markl√∏ft</button>
           <button type="button" class="ex-tag-btn" data-edit-muscle-group="back">Back</button>
           <button type="button" class="ex-tag-btn" data-edit-muscle-group="shoulders">Shoulders</button>
           <button type="button" class="ex-tag-btn" data-edit-muscle-group="triceps">Triceps</button>
