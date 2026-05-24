@@ -51,10 +51,10 @@
     snack: "Snack",
   };
   const MEAL_ICONS = {
-    breakfast: "ü•û",
-    lunch: "ü•ó",
-    dinner: "üçΩ",
-    snack: "üçé",
+    breakfast: "🥞",
+    lunch: "🥗",
+    dinner: "🍽",
+    snack: "🍎",
   };
   const MUSCLE_GROUPS = [
     "legs",
@@ -68,7 +68,7 @@
   ];
   const MUSCLE_GROUP_LABELS = {
     legs: "Legs",
-    marklift: "Markl√∏ft",
+    marklift: "Markløft",
     back: "Back",
     shoulders: "Shoulders",
     triceps: "Triceps",
@@ -104,7 +104,7 @@
   const DEFAULT_EXERCISES = [
     { id: "ex_benkpress", name: "Benkpress", builtin: true, defaultMuscleGroups: ["pecs", "triceps", "shoulders"] },
     { id: "ex_squat", name: "Squat", builtin: true, defaultMuscleGroups: ["legs"] },
-    { id: "ex_marklift", name: "Markl√∏ft", builtin: true, defaultMuscleGroups: ["marklift", "legs", "back"] },
+    { id: "ex_marklift", name: "Markløft", builtin: true, defaultMuscleGroups: ["marklift", "legs", "back"] },
     { id: "ex_skulderpress_db", name: "Skulderpress dumbbells", builtin: true, defaultMuscleGroups: ["shoulders", "triceps"] },
     { id: "ex_pulldown_rygg", name: "Pull down rygg", builtin: true, defaultMuscleGroups: ["back", "biceps"] },
   ];
@@ -124,7 +124,7 @@
   const DEFAULT_GOAL_PROTEIN = 180;
   const MAX_REPS_FOR_E1RM = 12;
 
-  // Transient UI state for the Exercise tab ‚Äî declared early so that the
+  // Transient UI state for the Exercise tab — declared early so that the
   // initial renderAll() at boot can safely read it. NOT persisted/synced.
   const exUi = {
     selectedMealType: "breakfast",
@@ -142,7 +142,7 @@
     {
       id: "habit_strength_training",
       name: "Strength Training",
-      icon: "üèãÔ∏è",
+      icon: "🏋️",
       color: "#2563d2",
       targetPerWeek: 3,
       scheduledDays: [1, 3, 5],
@@ -152,7 +152,7 @@
     {
       id: "habit_sleep",
       name: "7-8 hrs Sleep",
-      icon: "üò¥",
+      icon: "😴",
       color: "#5a6fc9",
       targetPerWeek: 7,
       scheduledDays: ALL_DAYS,
@@ -162,7 +162,7 @@
     {
       id: "habit_meals",
       name: "Eat Healthy Meals",
-      icon: "ü•ó",
+      icon: "🥗",
       color: "#2f8b5d",
       targetPerWeek: 7,
       scheduledDays: ALL_DAYS,
@@ -172,7 +172,7 @@
     {
       id: "habit_study",
       name: "Study",
-      icon: "üìö",
+      icon: "📚",
       color: "#d7842c",
       targetPerWeek: 6,
       scheduledDays: [0, 1, 2, 3, 4, 5],
@@ -182,7 +182,7 @@
     {
       id: "habit_hydration",
       name: "Drink 2L",
-      icon: "üíß",
+      icon: "💧",
       color: "#2f94bc",
       targetPerWeek: 7,
       scheduledDays: ALL_DAYS,
@@ -192,7 +192,7 @@
     {
       id: "habit_no_alcohol",
       name: "No Alcohol",
-      icon: "üö´",
+      icon: "🚫",
       color: "#b1454f",
       targetPerWeek: 7,
       scheduledDays: ALL_DAYS,
@@ -202,7 +202,7 @@
     {
       id: "habit_social",
       name: "Social Media < 90m",
-      icon: "üìµ",
+      icon: "📵",
       color: "#6a5cb6",
       targetPerWeek: 7,
       scheduledDays: ALL_DAYS,
@@ -212,7 +212,7 @@
     {
       id: "habit_no_porn",
       name: "No Porn",
-      icon: "üß†",
+      icon: "🧠",
       color: "#704b8d",
       targetPerWeek: 7,
       scheduledDays: ALL_DAYS,
@@ -222,7 +222,7 @@
     {
       id: "habit_plan",
       name: "Plan Tomorrow",
-      icon: "üìù",
+      icon: "📝",
       color: "#69707d",
       targetPerWeek: 7,
       scheduledDays: ALL_DAYS,
@@ -232,7 +232,7 @@
     {
       id: "habit_mobility",
       name: "Mobility 15m",
-      icon: "ü§∏",
+      icon: "🤸",
       color: "#8b6a35",
       targetPerWeek: 5,
       scheduledDays: [1, 2, 3, 4, 5],
@@ -768,7 +768,7 @@
       refs.dayDetailsModal.close();
     });
 
-    // Month heatmap is view-only now ‚Äî no click handler.
+    // Month heatmap is view-only now — no click handler.
 
     refs.openSyncBtn.addEventListener("click", () => {
       refs.syncModal.showModal();
@@ -992,7 +992,7 @@
         (d, i) =>
           `<circle cx="${xAt(i)}" cy="${yAt(d.rate30)}" r="3.8" class="chart-dot chart-dot-30"><title>${escapeHtml(
             d.habit.name,
-          )} ¬∑ 30-day: ${Math.round(d.rate30 * 100)}%</title></circle>`,
+          )} · 30-day: ${Math.round(d.rate30 * 100)}%</title></circle>`,
       )
       .join("");
     const dots7 = data
@@ -1000,7 +1000,7 @@
         (d, i) =>
           `<circle cx="${xAt(i)}" cy="${yAt(d.rate7)}" r="3.8" class="chart-dot chart-dot-7"><title>${escapeHtml(
             d.habit.name,
-          )} ¬∑ 7-day: ${Math.round(d.rate7 * 100)}%</title></circle>`,
+          )} · 7-day: ${Math.round(d.rate7 * 100)}%</title></circle>`,
       )
       .join("");
 
@@ -1008,7 +1008,7 @@
       .map((d, i) => {
         const x = xAt(i);
         const short =
-          d.habit.name.length > 10 ? d.habit.name.slice(0, 10).trim() + "‚Ä¶" : d.habit.name;
+          d.habit.name.length > 10 ? d.habit.name.slice(0, 10).trim() + "…" : d.habit.name;
         return (
           `<text x="${x}" y="${padT + plotHeight + 18}" class="chart-x-icon" text-anchor="middle">${d.habit.icon}</text>` +
           `<text x="${x}" y="${padT + plotHeight + 36}" class="chart-x-label" text-anchor="end" transform="rotate(-30, ${x}, ${padT +
@@ -1064,7 +1064,7 @@
       return 0;
     }
     const completed = countCompletionsInRange(habit, daysBack);
-    // No upper cap: beating your weekly goal can exceed 100% (e.g. target 4/wk, did 5 ‚Üí 125%).
+    // No upper cap: beating your weekly goal can exceed 100% (e.g. target 4/wk, did 5 → 125%).
     return Math.max(0, completed / expected);
   }
 
@@ -1096,7 +1096,7 @@
 
     const totals = getDayTotals(today);
     renderSegmentTrack(refs.todaySegmentTrack, totals.rate);
-    refs.todaySummaryLabel.textContent = `${totals.completed}/${totals.scheduled} ‚Ä¢ ${Math.round(totals.rate * 100)}%`;
+    refs.todaySummaryLabel.textContent = `${totals.completed}/${totals.scheduled} • ${Math.round(totals.rate * 100)}%`;
   }
 
   function renderTodayGroup(title, habits, today, dateKey) {
@@ -1144,7 +1144,7 @@
         data-action="toggle"
         data-habit-id="${habit.id}"
         title="${isDone ? "Undo" : "Mark done"}"
-      >‚úì</button>
+      >✓</button>
     `;
     return row;
   }
@@ -1316,8 +1316,8 @@
           dateKey === todayKey() ? " today" : ""
         }`;
         button.style.setProperty("--habit-color", habit.color);
-        button.textContent = done ? "‚úì" : "‚úì";
-        button.title = `${habit.name} ‚Ä¢ ${formatDateReadable(date)}`;
+        button.textContent = done ? "✓" : "✓";
+        button.title = `${habit.name} • ${formatDateReadable(date)}`;
         td.appendChild(button);
         row.appendChild(td);
       });
@@ -1393,7 +1393,7 @@
           data-habit-id="${habit.id}"
           data-date-key="${dateKey}"
           title="${done ? "Undo" : "Mark done"}"
-        >‚úì</button>
+        >✓</button>
       `;
       fragment.appendChild(row);
     });
@@ -1442,7 +1442,7 @@
             data-habit-id="${habit.id}"
             data-date-key="${dateKey}"
             title="${done ? "Undo" : "Mark done"}"
-          >‚úì</button>
+          >✓</button>
         `;
         list.appendChild(item);
       });
@@ -1471,7 +1471,7 @@
   }
 
   // GitHub-style year-long contribution heatmap.
-  // 53 weeks √ó 7 days grid. Each cell's shade is based on that day's
+  // 53 weeks × 7 days grid. Each cell's shade is based on that day's
   // overall completion rate (completed / scheduled across all habits).
   function renderHabitHeatmap() {
     if (!refs.habitHeatmap) {
@@ -1523,7 +1523,7 @@
     const overallRate = totalScheduled > 0 ? totalCompleted / totalScheduled : 0;
 
     if (refs.periodLabel) {
-      refs.periodLabel.textContent = `Last 365 days ¬∑ ${perfectDays} perfect`;
+      refs.periodLabel.textContent = `Last 365 days · ${perfectDays} perfect`;
     }
 
     // Cells HTML (column-first ordering matches CSS grid-auto-flow: column)
@@ -1558,8 +1558,8 @@
         const todayCls = isToday ? " heat-today" : "";
         const title =
           totals.scheduled === 0
-            ? `${formatDateWithWeekday(date)} ‚Äî rest day`
-            : `${formatDateWithWeekday(date)} ‚Äî ${totals.completed}/${totals.scheduled} (${Math.round(
+            ? `${formatDateWithWeekday(date)} — rest day`
+            : `${formatDateWithWeekday(date)} — ${totals.completed}/${totals.scheduled} (${Math.round(
                 totals.rate * 100,
               )}%)`;
         return `<div class="heat-cell heat-level-${level} heat-reveal${todayCls}" title="${escapeHtmlAttr(
@@ -1568,7 +1568,7 @@
       })
       .join("");
 
-    // Month labels ‚Äî first week that starts each month, skip duplicates too close together.
+    // Month labels — first week that starts each month, skip duplicates too close together.
     const monthNames = [
       "Jan", "Feb", "Mar", "Apr", "May", "Jun",
       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -1606,7 +1606,7 @@
         <header class="heatmap-new-head">
           <div>
             <p class="heatmap-big-stat">${Math.round(overallRate * 100)}%</p>
-            <p class="heatmap-stat-label">overall completion ¬∑ ${activeDays} scheduled days</p>
+            <p class="heatmap-stat-label">overall completion · ${activeDays} scheduled days</p>
           </div>
           <div class="heatmap-new-legend">
             <span class="muted">Less</span>
@@ -1933,7 +1933,7 @@
     return {
       kind: "done",
       level,
-      label: `Done ‚Ä¢ ${streak}-day streak`,
+      label: `Done • ${streak}-day streak`,
     };
   }
 
@@ -2267,7 +2267,7 @@
     if (!response.ok || !parsed || parsed.ok !== true) {
       const message = parsed?.error || `HTTP ${response.status}`;
       if (/unauthorized|session expired/i.test(String(message))) {
-        // Session token is bad or expired ‚Äî clear it. If we still have a valid ID token,
+        // Session token is bad or expired — clear it. If we still have a valid ID token,
         // the next request can fall back to using that. Otherwise the user will be re-prompted.
         if (useSession) {
           state.auth.sessionToken = "";
@@ -2355,7 +2355,7 @@
         return {
           id: String(habit.id || `habit_${generateId()}`),
           name: String(habit.name || "Untitled Habit"),
-          icon: String(habit.icon || "‚úÖ").slice(0, 4),
+          icon: String(habit.icon || "✅").slice(0, 4),
           color: normalizeHexColor(habit.color || "#2563d2"),
           type,
           targetPerWeek,
@@ -2540,7 +2540,7 @@
 
       // Only show Google's One Tap popup if we don't already have a working
       // login. With a valid session token (90-day) or fresh ID token (1-hour),
-      // there's no reason to prompt ‚Äî the user is already authenticated.
+      // there's no reason to prompt — the user is already authenticated.
       const idTokenValid =
         Boolean(state.auth?.idToken) && !isJwtExpired(state.auth.idToken, 45);
       const alreadyAuthenticated = hasValidSessionToken_() || idTokenValid;
@@ -2642,7 +2642,7 @@
         renderAuthIndicators();
       }
     } catch (error) {
-      // Silent fail ‚Äî ID token still works for the next hour.
+      // Silent fail — ID token still works for the next hour.
     }
   }
 
@@ -2823,7 +2823,7 @@
   function sanitizeHabitIcon(value) {
     const text = String(value || "").trim();
     if (!text) {
-      return "‚úÖ";
+      return "✅";
     }
     return text.slice(0, 4);
   }
@@ -3148,7 +3148,7 @@
     });
     next.workouts = cleanWorkouts;
 
-    // Weights: { dateKey: { kg, createdAt } } ‚Äî at most one per day
+    // Weights: { dateKey: { kg, createdAt } } — at most one per day
     const cleanWeights = {};
     const rawWeights = next.weights && typeof next.weights === "object" ? next.weights : {};
     Object.keys(rawWeights).forEach((dateKey) => {
@@ -3225,11 +3225,11 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 1RM estimation ‚Äî Epley formula.
-  // 1RM = weight √ó (1 + reps / 30)   for reps > 1
+  // 1RM estimation — Epley formula.
+  // 1RM = weight × (1 + reps / 30)   for reps > 1
   // 1RM = weight                     for reps = 1
   // Validated against direct 1RM testing in LeSuer et al. (1997) and Reynolds
-  // et al. (2006) for rep ranges 1‚Äì10. Most accurate at lower reps; flagged
+  // et al. (2006) for rep ranges 1–10. Most accurate at lower reps; flagged
   // beyond MAX_REPS_FOR_E1RM since the rep-weight curve flattens at high reps.
   // ---------------------------------------------------------------------------
   function calcE1rm(weight, reps) {
@@ -3485,7 +3485,7 @@
     if (!ex || !refs.exTodayCalories) return;
 
     if (refs.exSnapshotDateLabel) {
-      // "Sun, May 3" ‚Äî the year is implicit; eyebrow already says "Today".
+      // "Sun, May 3" — the year is implicit; eyebrow already says "Today".
       refs.exSnapshotDateLabel.textContent = formatDateShort(new Date());
     }
 
@@ -3541,7 +3541,7 @@
     }
     refs.exWeekWorkouts.textContent = String(weekCount);
     refs.exWeekWorkoutsSub.textContent = bestE1rmThisWeek
-      ? `Top e1RM: ${formatNumber(roundTo(bestE1rmThisWeek, 1))} kg ¬∑ ${bestE1rmExercise}`
+      ? `Top e1RM: ${formatNumber(roundTo(bestE1rmThisWeek, 1))} kg · ${bestE1rmExercise}`
       : weekCount
         ? `${weekCount} session${weekCount === 1 ? "" : "s"}`
         : "No workouts logged";
@@ -3551,7 +3551,7 @@
       .map(([dKey, v]) => ({ dateKey: dKey, kg: v.kg }))
       .sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
     if (weightEntries.length === 0) {
-      refs.exCurrentWeight.textContent = "‚Äî";
+      refs.exCurrentWeight.textContent = "—";
       refs.exWeightDelta.textContent = "No log yet";
     } else {
       const latest = weightEntries[weightEntries.length - 1];
@@ -3620,7 +3620,7 @@
       refs.exMealsListTitle.textContent = isToday ? "Today's meals" : `Meals on ${date}`;
     }
     if (refs.exMealsListTotals) {
-      refs.exMealsListTotals.textContent = `${formatNumber(totals.calories)} kcal ¬∑ ${formatNumber(totals.protein)} g protein`;
+      refs.exMealsListTotals.textContent = `${formatNumber(totals.calories)} kcal · ${formatNumber(totals.protein)} g protein`;
     }
 
     if (meals.length === 0) {
@@ -3637,7 +3637,7 @@
         const note = m.note ? `<p class="ex-meal-note">${escapeHtml(m.note)}</p>` : "";
         const time = formatTimeOfDay(m.createdAt);
         const labelLine = time
-          ? `${label}<span class="ex-meal-time"> ¬∑ ${time}</span>`
+          ? `${label}<span class="ex-meal-time"> · ${time}</span>`
           : label;
         return `
           <button class="ex-meal-row" type="button" data-edit-meal="${escapeHtmlAttr(date)}|${escapeHtmlAttr(m.id)}" style="--meal-color:${color}">
@@ -3712,7 +3712,7 @@
           const segH = (v / maxCal) * plotH;
           y -= segH;
           segments.push(
-            `<rect x="${x}" y="${y}" width="${w}" height="${segH}" fill="${MEAL_COLORS[mt]}" class="ex-bar-seg"><title>${d.dateKey} ¬∑ ${MEAL_LABELS[mt]}: ${formatNumber(v)} kcal</title></rect>`,
+            `<rect x="${x}" y="${y}" width="${w}" height="${segH}" fill="${MEAL_COLORS[mt]}" class="ex-bar-seg"><title>${d.dateKey} · ${MEAL_LABELS[mt]}: ${formatNumber(v)} kcal</title></rect>`,
           );
         });
         return segments.join("");
@@ -3768,13 +3768,13 @@
   }
 
   // Switches the primary action label to "+ Add another PR" once at least one
-  // lift has been logged for the form's selected date ‚Äî makes it obvious you
+  // lift has been logged for the form's selected date — makes it obvious you
   // can stack multiple PRs on the same session.
   function updateAddWorkoutButtonLabel() {
     if (!refs.exAddWorkoutBtn || !refs.exWorkoutDateInput) return;
     const dKey = refs.exWorkoutDateInput.value || todayKey();
     const count = isValidDateKey(dKey) ? (state.exercise.workouts[dKey] || []).length : 0;
-    refs.exAddWorkoutBtn.textContent = count > 0 ? "Ôºã Add another PR" : "Ôºã Log workout";
+    refs.exAddWorkoutBtn.textContent = count > 0 ? "＋ Add another PR" : "＋ Log workout";
   }
 
   function syncMuscleGroupButtons() {
@@ -3804,7 +3804,7 @@
           return `<div class="ex-custom-row">
             <span class="ex-custom-name">${escapeHtml(e.name)}</span>
             ${usedNote}
-            <button type="button" class="ex-custom-del" data-delete-exercise="${escapeHtmlAttr(e.id)}" aria-label="Delete ${escapeHtmlAttr(e.name)}">‚úï</button>
+            <button type="button" class="ex-custom-del" data-delete-exercise="${escapeHtmlAttr(e.id)}" aria-label="Delete ${escapeHtmlAttr(e.name)}">✕</button>
           </div>`;
         })
         .join("")}
@@ -3836,7 +3836,7 @@
     }
     const e1 = roundTo(calcE1rm(w, r), 1);
     const note = r > MAX_REPS_FOR_E1RM ? " (less accurate above 12 reps)" : "";
-    refs.exWorkoutE1rmPreview.textContent = `Estimated 1RM: ${formatNumber(e1)} kg (Epley: ${formatNumber(w)} √ó ${r})${note}`;
+    refs.exWorkoutE1rmPreview.textContent = `Estimated 1RM: ${formatNumber(e1)} kg (Epley: ${formatNumber(w)} × ${r})${note}`;
     refs.exWorkoutE1rmPreview.classList.remove("muted");
   }
 
@@ -3875,14 +3875,14 @@
     if (!refs.exWorkoutCalendar) return;
     const ex = state.exercise;
     // Reverse-chronological so today sits top-left and 30-days-ago is at the
-    // bottom ‚Äî keeps the most relevant info above the fold.
+    // bottom — keeps the most relevant info above the fold.
     const days = lastNDateKeys(30).slice().reverse();
     const todayK = todayKey();
     const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const cells = days
       .map((dKey, idx) => {
         // In reverse-chrono order we get a new month every time the previous
-        // cell's month differs from this one ‚Äî anchors the calendar to a real
+        // cell's month differs from this one — anchors the calendar to a real
         // calendar boundary regardless of which day-of-month falls there.
         const dayNum = dKey.slice(8);
         const monthIdx = Number(dKey.slice(5, 7)) - 1;
@@ -3904,8 +3904,8 @@
         const groups = best.muscleGroups || [];
         const color = groups.length ? MUSCLE_GROUP_COLORS[groups[0]] : "#5b6173";
         const groupsLabel = groups.length
-          ? groups.map((g) => MUSCLE_GROUP_LABELS[g]).join(" ¬∑ ")
-          : "‚Äî";
+          ? groups.map((g) => MUSCLE_GROUP_LABELS[g]).join(" · ")
+          : "—";
         // If there are multiple lifts on this day, route to a list modal that
         // shows them all. Single-lift days keep going straight to the edit form.
         const extra = list.length - 1;
@@ -3921,7 +3921,7 @@
             ${moreBadge}
             <span class="ex-day-num">${dayNum}</span>
             <span class="ex-day-type" title="${escapeHtmlAttr(groupsLabel)}">${escapeHtml(groupsLabel)}</span>
-            <span class="ex-day-pr">${formatNumber(best.weight)}√ó${best.reps}</span>
+            <span class="ex-day-pr">${formatNumber(best.weight)}×${best.reps}</span>
             <span class="ex-day-e1rm">${formatNumber(roundTo(best.e1rm, 0))}kg e1RM</span>
             <span class="ex-day-exname">${escapeHtml(truncate(exName, 14))}</span>
           </button>
@@ -3961,12 +3961,12 @@
     });
 
     // Subtitle reflects the actual window so the user knows what the rate is
-    // based on (e.g. "Last 5 days ¬∑ sessions / week" while they're new).
+    // based on (e.g. "Last 5 days · sessions / week" while they're new).
     if (refs.exMuscleFrequencyMeta) {
       refs.exMuscleFrequencyMeta.textContent =
         effectiveDays === 28
-          ? "Last 4 weeks ¬∑ sessions / week"
-          : `Last ${effectiveDays} days ¬∑ sessions / week`;
+          ? "Last 4 weeks · sessions / week"
+          : `Last ${effectiveDays} days · sessions / week`;
     }
 
     if (totalWorkouts === 0) {
@@ -3975,7 +3975,7 @@
       return;
     }
 
-    // Sort by count desc so neglected groups land at the bottom ‚Äî easy to spot.
+    // Sort by count desc so neglected groups land at the bottom — easy to spot.
     const rows = MUSCLE_GROUPS
       .map((g) => ({ group: g, count: counts[g], perWeek: counts[g] / weeks }))
       .sort((a, b) => b.count - a.count);
@@ -4036,7 +4036,7 @@
         } else {
           valueText = `${r.days} days ago`;
         }
-        // Bar visualizes "how stale is it" ‚Äî full bar = never trained, empty
+        // Bar visualizes "how stale is it" — full bar = never trained, empty
         // bar = trained today.
         const maxDays = Math.max(1, ...rows.filter((x) => x.days !== Infinity).map((x) => x.days), 7);
         const pct = r.last == null ? 100 : Math.min(100, (r.days / maxDays) * 100);
@@ -4065,8 +4065,8 @@
     const ex = state.exercise;
     const mode = exUi.progressionMode === "kg" ? "kg" : "percent";
 
-    // Group all workouts by exercise ‚Üí ordered points. Session-only entries
-    // (no weight/reps logged) are skipped ‚Äî they don't represent a PR, so
+    // Group all workouts by exercise → ordered points. Session-only entries
+    // (no weight/reps logged) are skipped — they don't represent a PR, so
     // including them as e1rm=0 would tank the baseline.
     const byExercise = {};
     Object.keys(ex.workouts).forEach((dKey) => {
@@ -4088,8 +4088,8 @@
     if (refs.exProgressionMeta) {
       refs.exProgressionMeta.textContent =
         mode === "percent"
-          ? "All exercises ¬∑ % of your first logged session"
-          : "All exercises ¬∑ estimated 1RM (kg)";
+          ? "All exercises · % of your first logged session"
+          : "All exercises · estimated 1RM (kg)";
     }
 
     if (exercisesWithData.length === 0) {
@@ -4131,7 +4131,7 @@
     let yMin;
     let yMax;
     if (mode === "percent") {
-      // Always keep the 100% baseline visible, with a minimum ¬±10% window so a
+      // Always keep the 100% baseline visible, with a minimum ±10% window so a
       // single-entry chart doesn't look weirdly flat or zoomed-in.
       minV = Math.min(minV, 90);
       maxV = Math.max(maxV, 110);
@@ -4193,7 +4193,7 @@
         const dots = pts
           .map((p) => {
             const pct = (p.e1rm / baseline) * 100;
-            const tooltip = `${e.name} ¬∑ ${p.dateKey} ¬∑ ${formatNumber(p.weight)}√ó${p.reps} ‚Üí ${formatNumber(roundTo(p.e1rm, 1))} kg e1RM (${formatNumber(roundTo(pct, 0))}% of baseline)`;
+            const tooltip = `${e.name} · ${p.dateKey} · ${formatNumber(p.weight)}×${p.reps} → ${formatNumber(roundTo(p.e1rm, 1))} kg e1RM (${formatNumber(roundTo(pct, 0))}% of baseline)`;
             return `<circle cx="${xAt(p.dateKey)}" cy="${yAt(yValueFor(p, baseline))}" r="3.4" fill="${color}" stroke="#fff" stroke-width="1.4"><title>${escapeHtml(tooltip)}</title></circle>`;
           })
           .join("");
@@ -4369,7 +4369,7 @@
           `<div class="ex-weight-row">
             <span class="ex-weight-date">${p.dateKey}</span>
             <span class="ex-weight-kg">${formatNumber(p.kg)} <span class="muted">kg</span></span>
-            <button class="ex-weight-del" type="button" data-delete-weight="${escapeHtmlAttr(p.dateKey)}" aria-label="Delete">‚úï</button>
+            <button class="ex-weight-del" type="button" data-delete-weight="${escapeHtmlAttr(p.dateKey)}" aria-label="Delete">✕</button>
           </div>`,
       )
       .join("");
@@ -4675,7 +4675,7 @@
     const used = countWorkoutsForExercise(exerciseId);
     if (used > 0) {
       window.alert(
-        `Can't delete "${ex.name}" ‚Äî ${used} workout${used === 1 ? "" : "s"} use${used === 1 ? "s" : ""} it. Edit those workouts to use a different exercise first.`,
+        `Can't delete "${ex.name}" — ${used} workout${used === 1 ? "" : "s"} use${used === 1 ? "s" : ""} it. Edit those workouts to use a different exercise first.`,
       );
       return;
     }
@@ -4698,7 +4698,7 @@
     const repsProvided = Number.isFinite(rawReps) && rawReps >= 1;
     const hasPR = weightProvided && repsProvided;
     const hasMuscles = exUi.selectedMuscleGroups.size > 0;
-    // Asymmetric input (only weight or only reps) is almost always a typo ‚Äî
+    // Asymmetric input (only weight or only reps) is almost always a typo —
     // ask for both, or neither.
     if ((weightProvided || repsProvided) && !hasPR) {
       showToast("Enter both weight and reps, or leave both blank.");
@@ -4737,12 +4737,12 @@
     updateAddWorkoutButtonLabel();
     const day = result.dateKey === todayKey() ? "today" : result.dateKey;
     if (hasPR) {
-      showToast(`PR logged (${day}) ¬∑ e1RM ${formatNumber(roundTo(result.workout.e1rm, 1))} kg.`);
+      showToast(`PR logged (${day}) · e1RM ${formatNumber(roundTo(result.workout.e1rm, 1))} kg.`);
     } else {
       const groupsLabel = (result.workout.muscleGroups || [])
         .map((g) => MUSCLE_GROUP_LABELS[g])
-        .join(" ¬∑ ");
-      showToast(`Session logged (${day}) ¬∑ ${groupsLabel}`);
+        .join(" · ");
+      showToast(`Session logged (${day}) · ${groupsLabel}`);
     }
   }
 
@@ -4760,18 +4760,18 @@
         const groups = w.muscleGroups || [];
         const color = groups.length ? MUSCLE_GROUP_COLORS[groups[0]] : "#5b6173";
         const groupsLabel = groups.length
-          ? groups.map((g) => MUSCLE_GROUP_LABELS[g]).join(" ¬∑ ")
-          : "‚Äî";
+          ? groups.map((g) => MUSCLE_GROUP_LABELS[g]).join(" · ")
+          : "—";
         const exercise = ex.exercises.find((e) => e.id === w.exerciseId);
         const exName = exercise ? exercise.name : "(unknown exercise)";
         const hasPR = w.e1rm > 0;
         // For session-only entries the exerciseId was just whatever the
         // auto-link picked, so leading with muscle groups is more truthful.
         const titleText = hasPR ? exName : groupsLabel;
-        const subtitleText = hasPR ? groupsLabel : "Session ¬∑ no PR";
+        const subtitleText = hasPR ? groupsLabel : "Session · no PR";
         const statsBlock = hasPR
           ? `<span class="ex-day-workout-stats">
-              <span class="ex-day-workout-pr">${formatNumber(w.weight)} √ó ${w.reps}</span>
+              <span class="ex-day-workout-pr">${formatNumber(w.weight)} × ${w.reps}</span>
               <span class="ex-day-workout-e1rm muted">${formatNumber(roundTo(w.e1rm, 1))} kg e1RM</span>
             </span>`
           : "";
@@ -4809,7 +4809,7 @@
     showToast(
       dateKey === todayKey()
         ? "Add another lift below."
-        : `Adding a lift for ${dateKey} ‚Äî fill the form below.`,
+        : `Adding a lift for ${dateKey} — fill the form below.`,
     );
   }
 
@@ -4829,7 +4829,7 @@
     refs.exWorkoutEditE1rm.textContent =
       w.e1rm > 0
         ? `Estimated 1RM: ${formatNumber(roundTo(w.e1rm, 1))} kg`
-        : "Session entry ‚Äî leave blank for no PR.";
+        : "Session entry — leave blank for no PR.";
     const activeGroups = new Set(w.muscleGroups || []);
     refs.exWorkoutEditGroupButtons.forEach((btn) => {
       const g = btn.dataset.editMuscleGroup;
@@ -4936,7 +4936,7 @@
 
   function truncate(str, max) {
     const s = String(str || "");
-    return s.length > max ? s.slice(0, max - 1) + "‚Ä¶" : s;
+    return s.length > max ? s.slice(0, max - 1) + "…" : s;
   }
 
   function formatDateShort(date) {
