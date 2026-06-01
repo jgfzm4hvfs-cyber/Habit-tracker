@@ -3252,6 +3252,62 @@ textarea {
 }
 
 /* Muscle group frequency: at-a-glance "am I neglecting any group?" view. */
+/* Hero "workouts per week" counter — sits above the muscle-group breakdown
+   and is deliberately bigger / more prominent than the per-group rows. */
+.ex-weekly-freq {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  padding: 1rem 1.2rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--primary-soft);
+  border-left: 5px solid var(--primary);
+  background: linear-gradient(135deg, rgba(37, 99, 210, 0.13), rgba(37, 99, 210, 0.03));
+  box-shadow: var(--shadow-soft);
+}
+
+.ex-weekly-freq-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--primary-strong);
+  line-height: 1;
+}
+
+.ex-weekly-freq-value {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 2.9rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ex-weekly-freq-unit {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+.ex-weekly-freq-body {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.ex-weekly-freq-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ex-weekly-freq-meta {
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
 .ex-muscle-freq-list {
   display: grid;
   gap: 0.32rem;
