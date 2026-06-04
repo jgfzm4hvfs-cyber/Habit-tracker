@@ -65,6 +65,7 @@
     "biceps",
     "pecs",
     "abs",
+    "running",
   ];
   const MUSCLE_GROUP_LABELS = {
     legs: "Legs",
@@ -75,6 +76,7 @@
     biceps: "Biceps",
     pecs: "Pecs",
     abs: "Abs",
+    running: "Running",
   };
   const MUSCLE_GROUP_COLORS = {
     legs: "#d7842c",
@@ -85,6 +87,7 @@
     biceps: "#b1454f",
     pecs: "#2f8b5d",
     abs: "#5b6173",
+    running: "#c2478f",
   };
   // Maps the legacy single-type field to the new muscle-group array, so any
   // workouts the user logged before this change come across without manual edit.
@@ -107,6 +110,7 @@
     { id: "ex_marklift", name: "Markløft", builtin: true, defaultMuscleGroups: ["marklift", "legs", "back"] },
     { id: "ex_skulderpress_db", name: "Skulderpress dumbbells", builtin: true, defaultMuscleGroups: ["shoulders", "triceps"] },
     { id: "ex_pulldown_rygg", name: "Pull down rygg", builtin: true, defaultMuscleGroups: ["back", "biceps"] },
+    { id: "ex_running", name: "Running", builtin: true, defaultMuscleGroups: ["running"] },
   ];
   // When the user taps a muscle group with an empty exercise selection, the
   // exercise dropdown auto-jumps to that group's canonical default lift.
@@ -119,6 +123,7 @@
     back: "ex_pulldown_rygg",
     biceps: "ex_pulldown_rygg",
     abs: null, // no good default lift
+    running: "ex_running",
   };
   const DEFAULT_GOAL_CALORIES = 2500;
   const DEFAULT_GOAL_PROTEIN = 180;
@@ -396,6 +401,8 @@
     exWorkoutCalendar: byId("exWorkoutCalendar"),
     exMuscleFrequencyList: byId("exMuscleFrequencyList"),
     exMuscleFrequencyMeta: byId("exMuscleFrequencyMeta"),
+    exWeeklyFreqValue: byId("exWeeklyFreqValue"),
+    exWeeklyFreqMeta: byId("exWeeklyFreqMeta"),
     exDaysSinceList: byId("exDaysSinceList"),
     exProgressionChart: byId("exProgressionChart"),
     exProgressionLegend: byId("exProgressionLegend"),
@@ -3761,6 +3768,7 @@
     renderExE1rmPreview();
     renderExWorkoutStats();
     renderExWorkoutCalendar();
+    renderExWeeklyWorkoutFrequency();
     renderExMuscleFrequency();
     renderExDaysSinceTrained();
     renderExProgressionChart();
@@ -3929,6 +3937,40 @@
       })
       .join("");
     refs.exWorkoutCalendar.innerHTML = cells;
+  }
+
+  function renderExWeeklyWorkoutFrequency() {
+    if (!refs.exWeeklyFreqValue) return;
+    const ex = state.exercise;
+
+    // Same adaptive window as the muscle-group frequency counter below: 7-day
+    // floor (meaningful numbers from day 1), 28-day cap (ancient history stops
+    // diluting the rate), growing with the user's real logging history between.
+    const FLOOR = 7;
+    const CAP = 28;
+    const firstKey = findFirstWorkoutDateKey(ex);
+    const today = todayKey();
+    const daysSinceFirst = firstKey ? daysBetween(firstKey, today) + 1 : 0;
+    const effectiveDays = Math.max(FLOOR, Math.min(CAP, daysSinceFirst || FLOOR));
+    const weeks = effectiveDays / 7;
+
+    const days = lastNDateKeys(effectiveDays);
+
+    // "Times worked out" = distinct days with at least one logged workout, so a
+    // single gym day with five exercises counts once, not five times.
+    let workoutDays = 0;
+    days.forEach((dKey) => {
+      if ((ex.workouts[dKey] || []).length > 0) workoutDays += 1;
+    });
+
+    const perWeek = workoutDays / weeks;
+    refs.exWeeklyFreqValue.textContent = perWeek.toFixed(1);
+
+    if (refs.exWeeklyFreqMeta) {
+      const windowText = effectiveDays === 28 ? "Last 4 weeks" : `Last ${effectiveDays} days`;
+      const sessionText = `${workoutDays} session${workoutDays === 1 ? "" : "s"}`;
+      refs.exWeeklyFreqMeta.textContent = `${windowText} · ${sessionText}`;
+    }
   }
 
   function renderExMuscleFrequency() {
@@ -4731,6 +4773,7 @@
     renderExSnapshot();
     renderExWorkoutStats();
     renderExWorkoutCalendar();
+    renderExWeeklyWorkoutFrequency();
     renderExMuscleFrequency();
     renderExDaysSinceTrained();
     renderExProgressionChart();
@@ -4876,6 +4919,7 @@
     renderExSnapshot();
     renderExWorkoutStats();
     renderExWorkoutCalendar();
+    renderExWeeklyWorkoutFrequency();
     renderExMuscleFrequency();
     renderExDaysSinceTrained();
     renderExProgressionChart();
@@ -4893,6 +4937,7 @@
     renderExSnapshot();
     renderExWorkoutStats();
     renderExWorkoutCalendar();
+    renderExWeeklyWorkoutFrequency();
     renderExMuscleFrequency();
     renderExDaysSinceTrained();
     renderExProgressionChart();
