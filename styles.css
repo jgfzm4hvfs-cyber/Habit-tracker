@@ -2331,7 +2331,7 @@ textarea {
 /* Top-level tab switcher: Habits | Exercise */
 .top-tab-switch {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.3rem;
   padding: 0.32rem;
   margin: 0;
@@ -3542,7 +3542,239 @@ textarea {
 }
 
 /* ------------------------------- Small phone tweaks ------------------------------- */
+/* ================================= Caffeine ================================= */
+.caf-snapshot-tile {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.caf-progress-fill {
+  background: linear-gradient(90deg, #96603a, #6f4429);
+}
+
+.caf-progress-fill.over {
+  background: linear-gradient(90deg, #c8566a, #b53b4f);
+}
+
+/* The day the date picker currently points at, so the grid and the form agree. */
+.caf-calendar .ex-day-cell.is-selected {
+  border-color: #6f4429;
+  box-shadow:
+    0 0 0 2px rgba(111, 68, 41, 0.55),
+    0 4px 10px -8px rgba(12, 12, 19, 0.3);
+}
+
+.caf-calendar .ex-day-cell {
+  cursor: pointer;
+}
+
+/* --- Cup picker: tap a mug once per cup, quarter/half/full --- */
+.caf-cup-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.55rem;
+}
+
+.caf-cup-btn {
+  appearance: none;
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  padding: 0.7rem 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.66);
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform var(--dur-quick) var(--ease-out-quint),
+    box-shadow var(--dur-quick) var(--ease-smooth),
+    border-color var(--dur-quick) var(--ease-smooth);
+}
+
+.caf-cup-btn:hover {
+  border-color: #b98a63;
+  box-shadow: var(--shadow-soft);
+}
+
+.caf-cup-btn:active {
+  transform: scale(0.95);
+  transition-duration: 60ms;
+}
+
+/* Brief pop so a tap is visibly registered even when the count is off-screen. */
+.caf-cup-btn.just-added {
+  animation: cafPop var(--dur-med) var(--ease-spring);
+  border-color: #6f4429;
+}
+
+@keyframes cafPop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.09);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.caf-cup-art {
+  display: block;
+  width: 100%;
+  max-width: 74px;
+}
+
+.caf-mug {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.caf-mug-body {
+  fill: #fdfdff;
+  stroke: #b9bec9;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.caf-mug-rim {
+  fill: none;
+  stroke: #b9bec9;
+  stroke-width: 2;
+}
+
+.caf-mug-handle {
+  fill: none;
+  stroke: #b9bec9;
+  stroke-width: 3.4;
+  stroke-linecap: round;
+}
+
+.caf-mug-inner {
+  fill: #eceef4;
+}
+
+.caf-mug-coffee {
+  fill: #6f4429;
+}
+
+.caf-mug-crema {
+  fill: #96603a;
+}
+
+.caf-mug-saucer {
+  fill: rgba(25, 25, 35, 0.09);
+}
+
+.caf-cup-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+/* --- Pending basket: what will be sent when you hit "Add to day" --- */
+.caf-pending {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px dashed #c2a288;
+  background: rgba(111, 68, 41, 0.07);
+}
+
+.caf-pending-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.caf-pending-value {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.7rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #6f4429;
+}
+
+.caf-pending-unit {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+
+.caf-pending-mg {
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-left: auto;
+}
+
+.caf-clear-btn {
+  padding: 0.32rem 0.62rem;
+  font-size: 0.78rem;
+}
+
+.caf-day-note {
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+/* --- History --- */
+.caf-calendar .ex-day-cell {
+  min-height: 58px;
+}
+
+.caf-day-cups {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1rem;
+  line-height: 1.05;
+  color: #6f4429;
+  font-variant-numeric: tabular-nums;
+}
+
+.caf-day-mg {
+  font-size: 0.56rem;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.caf-bar {
+  fill: #6f4429;
+}
+
+.caf-bar.over {
+  fill: #b53b4f;
+}
+
+.caf-goal-line {
+  stroke: #b53b4f;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  opacity: 0.75;
+}
+
 @media (max-width: 480px) {
+  .caf-cup-btn {
+    padding: 0.55rem 0.3rem 0.5rem;
+  }
+
+  .caf-cup-label {
+    font-size: 0.74rem;
+  }
+
+  .caf-pending-value {
+    font-size: 1.45rem;
+  }
+
   .ex-snapshot {
     padding: 0.85rem 0.9rem;
   }
@@ -3582,12 +3814,14 @@ textarea {
     font-size: 0.58rem;
   }
 
+  /* Three tabs have to share a phone-width row, so trim padding and type. */
   .top-tab-btn {
-    padding: 0.55rem 0.5rem;
-    font-size: 0.88rem;
+    padding: 0.55rem 0.28rem;
+    font-size: 0.8rem;
+    gap: 0.28rem;
   }
 
   .top-tab-icon {
-    font-size: 0.95rem;
+    font-size: 0.9rem;
   }
 }

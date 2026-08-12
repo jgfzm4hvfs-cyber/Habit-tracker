@@ -13,7 +13,7 @@
       href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Work+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260604a" />
+    <link rel="stylesheet" href="./styles.css?v=20260812a" />
   </head>
   <body>
     <div class="bg-shape bg-shape-a" aria-hidden="true"></div>
@@ -49,6 +49,10 @@
         <button class="top-tab-btn" type="button" data-top-tab="exercise" role="tab" aria-selected="false">
           <span class="top-tab-icon" aria-hidden="true">🏋️</span>
           <span class="top-tab-label">Exercise</span>
+        </button>
+        <button class="top-tab-btn" type="button" data-top-tab="caffeine" role="tab" aria-selected="false">
+          <span class="top-tab-icon" aria-hidden="true">☕</span>
+          <span class="top-tab-label">Caffeine</span>
         </button>
       </nav>
 
@@ -390,6 +394,192 @@
 
       </div><!-- /#exerciseApp -->
 
+      <!-- =============================================================
+           Caffeine app
+           ============================================================= -->
+      <div id="caffeineApp" class="top-tab-pane" hidden>
+
+        <!-- Snapshot for the selected day -->
+        <section class="card ex-snapshot" aria-label="Caffeine snapshot">
+          <header class="ex-snapshot-head">
+            <div>
+              <p class="eyebrow">Caffeine</p>
+              <h2 id="cafSnapshotDateLabel">Today</h2>
+            </div>
+            <button id="cafEditGoalBtn" class="btn ghost ex-edit-goals-btn" type="button" aria-label="Edit daily limit">
+              <span aria-hidden="true">⚙</span> Limit
+            </button>
+          </header>
+
+          <div class="caf-snapshot-tile">
+            <div class="ex-nutri-row">
+              <span class="ex-nutri-key">Cups</span>
+              <span class="ex-nutri-val"><span id="cafDayCups">0</span><span class="ex-tile-divider">/</span><span id="cafGoalCups" class="ex-tile-goal">4</span></span>
+            </div>
+            <div class="ex-progress-track"><div id="cafDayBar" class="ex-progress-fill caf-progress-fill" style="width:0%"></div></div>
+            <p id="cafDayMg" class="ex-tile-sub muted">0 mg caffeine</p>
+          </div>
+        </section>
+
+        <!-- Log: tap cups, then send -->
+        <section class="card ex-section" aria-label="Log caffeine">
+          <header class="ex-section-head">
+            <div>
+              <p class="eyebrow">Log</p>
+              <h2>Add coffee</h2>
+            </div>
+          </header>
+
+          <div class="ex-quickadd">
+            <label class="ex-input-wrap ex-input-wide">
+              <span class="ex-input-label">Date</span>
+              <input id="cafDateInput" type="date" />
+            </label>
+
+            <div class="caf-cup-row" role="group" aria-label="Cup sizes">
+              <button type="button" class="caf-cup-btn" data-caffeine-add="0.25" aria-label="Add a quarter cup">
+                <span class="caf-cup-art" aria-hidden="true">
+                  <svg viewBox="0 0 64 64" class="caf-mug" focusable="false">
+                    <defs>
+                      <clipPath id="cafClipQ">
+                        <ellipse cx="32" cy="19" rx="13.6" ry="2.6" />
+                        <path d="M18.4 19 H45.6 L42.4 49.8 A4.8 4.8 0 0 1 37.6 53.8 H26.4 A4.8 4.8 0 0 1 21.6 49.8 Z" />
+                      </clipPath>
+                    </defs>
+                    <ellipse class="caf-mug-saucer" cx="32" cy="58.6" rx="19" ry="2.6" />
+                    <path class="caf-mug-handle" d="M47.5 25 C57.5 25 57.5 41.5 46.5 41.5" />
+                    <path class="caf-mug-body" d="M16.5 19 H47.5 L44 50.2 A7 7 0 0 1 37 56.2 H27 A7 7 0 0 1 20 50.2 Z" />
+                    <g clip-path="url(#cafClipQ)">
+                      <rect class="caf-mug-inner" x="17" y="16" width="30" height="40" />
+                      <rect class="caf-mug-coffee" x="17" y="45.1" width="30" height="13" />
+                      <ellipse class="caf-mug-crema" cx="32" cy="45.1" rx="11.2" ry="2.2" />
+                    </g>
+                    <ellipse class="caf-mug-rim" cx="32" cy="19" rx="15.5" ry="2.9" />
+                  </svg>
+                </span>
+                <span class="caf-cup-label">¼ cup</span>
+              </button>
+
+              <button type="button" class="caf-cup-btn" data-caffeine-add="0.5" aria-label="Add a half cup">
+                <span class="caf-cup-art" aria-hidden="true">
+                  <svg viewBox="0 0 64 64" class="caf-mug" focusable="false">
+                    <defs>
+                      <clipPath id="cafClipH">
+                        <ellipse cx="32" cy="19" rx="13.6" ry="2.6" />
+                        <path d="M18.4 19 H45.6 L42.4 49.8 A4.8 4.8 0 0 1 37.6 53.8 H26.4 A4.8 4.8 0 0 1 21.6 49.8 Z" />
+                      </clipPath>
+                    </defs>
+                    <ellipse class="caf-mug-saucer" cx="32" cy="58.6" rx="19" ry="2.6" />
+                    <path class="caf-mug-handle" d="M47.5 25 C57.5 25 57.5 41.5 46.5 41.5" />
+                    <path class="caf-mug-body" d="M16.5 19 H47.5 L44 50.2 A7 7 0 0 1 37 56.2 H27 A7 7 0 0 1 20 50.2 Z" />
+                    <g clip-path="url(#cafClipH)">
+                      <rect class="caf-mug-inner" x="17" y="16" width="30" height="40" />
+                      <rect class="caf-mug-coffee" x="17" y="36.4" width="30" height="22" />
+                      <ellipse class="caf-mug-crema" cx="32" cy="36.4" rx="12" ry="2.35" />
+                    </g>
+                    <ellipse class="caf-mug-rim" cx="32" cy="19" rx="15.5" ry="2.9" />
+                  </svg>
+                </span>
+                <span class="caf-cup-label">½ cup</span>
+              </button>
+
+              <button type="button" class="caf-cup-btn" data-caffeine-add="1" aria-label="Add a full cup">
+                <span class="caf-cup-art" aria-hidden="true">
+                  <svg viewBox="0 0 64 64" class="caf-mug" focusable="false">
+                    <defs>
+                      <clipPath id="cafClipF">
+                        <ellipse cx="32" cy="19" rx="13.6" ry="2.6" />
+                        <path d="M18.4 19 H45.6 L42.4 49.8 A4.8 4.8 0 0 1 37.6 53.8 H26.4 A4.8 4.8 0 0 1 21.6 49.8 Z" />
+                      </clipPath>
+                    </defs>
+                    <ellipse class="caf-mug-saucer" cx="32" cy="58.6" rx="19" ry="2.6" />
+                    <path class="caf-mug-handle" d="M47.5 25 C57.5 25 57.5 41.5 46.5 41.5" />
+                    <path class="caf-mug-body" d="M16.5 19 H47.5 L44 50.2 A7 7 0 0 1 37 56.2 H27 A7 7 0 0 1 20 50.2 Z" />
+                    <g clip-path="url(#cafClipF)">
+                      <rect class="caf-mug-inner" x="17" y="16" width="30" height="40" />
+                      <rect class="caf-mug-coffee" x="17" y="19" width="30" height="39" />
+                      <ellipse class="caf-mug-crema" cx="32" cy="19" rx="13.6" ry="2.6" />
+                    </g>
+                    <ellipse class="caf-mug-rim" cx="32" cy="19" rx="15.5" ry="2.9" />
+                  </svg>
+                </span>
+                <span class="caf-cup-label">1 cup</span>
+              </button>
+            </div>
+
+            <div class="caf-pending">
+              <div class="caf-pending-figure">
+                <span id="cafPendingCups" class="caf-pending-value">0</span>
+                <span class="caf-pending-unit">cups ready</span>
+              </div>
+              <span id="cafPendingMg" class="caf-pending-mg muted">0 mg</span>
+              <button id="cafClearBtn" class="btn ghost caf-clear-btn" type="button">Clear</button>
+            </div>
+
+            <button id="cafSubmitBtn" type="button" class="btn primary ex-add-btn">＋ Add to day</button>
+            <p id="cafDayNote" class="caf-day-note muted">Nothing logged for this day yet.</p>
+          </div>
+        </section>
+
+        <!-- History + data -->
+        <section class="card ex-section" aria-label="Caffeine history">
+          <header class="ex-section-head">
+            <div>
+              <p class="eyebrow">History</p>
+              <h2>Intake over time</h2>
+            </div>
+          </header>
+
+          <div class="ex-stats-row">
+            <div class="ex-stat">
+              <p class="ex-stat-label">Last 7 days</p>
+              <p class="ex-stat-value"><span id="cafStatWeekAvg">0</span><span class="ex-stat-unit">cups / day</span></p>
+            </div>
+            <div class="ex-stat">
+              <p class="ex-stat-label">Last 30 days</p>
+              <p class="ex-stat-value"><span id="cafStatMonthAvg">0</span><span class="ex-stat-unit">cups / day</span></p>
+            </div>
+            <div class="ex-stat">
+              <p class="ex-stat-label">Days over limit</p>
+              <p class="ex-stat-value"><span id="cafStatOverLimit">0</span><span class="ex-stat-unit">last 30d</span></p>
+            </div>
+          </div>
+
+          <!-- Last 30 days calendar -->
+          <div class="ex-subsection">
+            <header class="ex-subsection-head">
+              <h3>Last 30 days</h3>
+              <span class="ex-subsection-meta muted">Cups per day</span>
+            </header>
+            <div id="cafCalendar" class="ex-workout-calendar caf-calendar"></div>
+          </div>
+
+          <!-- Trend chart -->
+          <div class="ex-subsection">
+            <header class="ex-subsection-head">
+              <h3>Trend</h3>
+              <div class="ex-range-switch" role="tablist" aria-label="Caffeine range">
+                <button class="ex-range-btn active" type="button" data-caffeine-range="30">30d</button>
+                <button class="ex-range-btn" type="button" data-caffeine-range="90">90d</button>
+                <button class="ex-range-btn" type="button" data-caffeine-range="365">1y</button>
+                <button class="ex-range-btn" type="button" data-caffeine-range="all">All</button>
+              </div>
+            </header>
+            <div id="cafChart" class="ex-chart-wrap"></div>
+          </div>
+
+          <!-- Recent entries -->
+          <div class="ex-subsection">
+            <header class="ex-subsection-head">
+              <h3>Recent entries</h3>
+              <span class="ex-subsection-meta muted">Newest first</span>
+            </header>
+            <div id="cafHistory" class="ex-weight-history"></div>
+          </div>
+        </section>
+
+      </div><!-- /#caffeineApp -->
+
       <!-- Bottom: subtle status indicators -->
       <footer class="status-footer">
         <span id="authBadge" class="sync-badge local">Not signed in</span>
@@ -552,6 +742,24 @@
       </form>
     </dialog>
 
+    <!-- Daily caffeine limit dialog (Caffeine tab) -->
+    <dialog id="cafGoalModal" class="sync-modal">
+      <form id="cafGoalForm" method="dialog">
+        <header class="section-head">
+          <h2>Daily limit</h2>
+          <p class="muted">Cups per day you want to stay under.</p>
+        </header>
+
+        <label for="cafGoalInput">Cup limit</label>
+        <input id="cafGoalInput" type="number" inputmode="decimal" min="1" max="20" step="0.5" />
+
+        <div class="button-row modal-footer">
+          <button id="cafSaveGoalBtn" class="btn primary" type="button">Save</button>
+          <button id="cafCloseGoalBtn" class="btn ghost" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
     <!-- Meal edit dialog (Exercise tab) -->
     <dialog id="exMealEditModal" class="sync-modal">
       <form id="exMealEditForm" method="dialog">
@@ -649,6 +857,6 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="./cloud-config.js?v=20260214"></script>
-    <script src="./app.js?v=20260604a" defer></script>
+    <script src="./app.js?v=20260812a" defer></script>
   </body>
 </html>

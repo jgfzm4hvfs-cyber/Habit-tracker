@@ -129,6 +129,14 @@
   const DEFAULT_GOAL_PROTEIN = 180;
   const MAX_REPS_FOR_E1RM = 12;
 
+  // Caffeine: a "cup" is the unit the user logs in (quarter / half / whole).
+  // ~95 mg is the common figure for a 240 ml brewed coffee, used only to show
+  // an informative mg number next to the cup count.
+  const TOP_TABS = ["habits", "exercise", "caffeine"];
+  const CAFFEINE_MG_PER_CUP = 95;
+  const DEFAULT_CAFFEINE_GOAL_CUPS = 4;
+  const CAFFEINE_MAX_CUPS_PER_DAY = 40;
+
   // Transient UI state for the Exercise tab — declared early so that the
   // initial renderAll() at boot can safely read it. NOT persisted/synced.
   const exUi = {
@@ -141,6 +149,14 @@
     editingMealKey: "",
     editingWorkoutKey: "",
     dayWorkoutsModalDate: "",
+  };
+
+  // Transient UI state for the Caffeine tab. `pendingCups` is the not-yet-saved
+  // basket the cup buttons add to; it is deliberately NOT persisted so a reload
+  // never silently commits taps the user didn't send.
+  const cafUi = {
+    pendingCups: 0,
+    rangeDays: 30,
   };
 
   const DEFAULT_HABITS = [
@@ -350,6 +366,7 @@
     topTabButtons: Array.from(document.querySelectorAll(".top-tab-btn")),
     habitsApp: byId("habitsApp"),
     exerciseApp: byId("exerciseApp"),
+    caffeineApp: byId("caffeineApp"),
 
     // Snapshot
     exSnapshotDateLabel: byId("exSnapshotDateLabel"),
@@ -416,6 +433,32 @@
     exWeightChart: byId("exWeightChart"),
     exWeightHistory: byId("exWeightHistory"),
     exWeightRangeButtons: Array.from(document.querySelectorAll(".ex-range-btn[data-weight-range]")),
+
+    // Caffeine tab
+    cafSnapshotDateLabel: byId("cafSnapshotDateLabel"),
+    cafDayCups: byId("cafDayCups"),
+    cafGoalCups: byId("cafGoalCups"),
+    cafDayBar: byId("cafDayBar"),
+    cafDayMg: byId("cafDayMg"),
+    cafEditGoalBtn: byId("cafEditGoalBtn"),
+    cafGoalModal: byId("cafGoalModal"),
+    cafGoalInput: byId("cafGoalInput"),
+    cafSaveGoalBtn: byId("cafSaveGoalBtn"),
+    cafCloseGoalBtn: byId("cafCloseGoalBtn"),
+    cafDateInput: byId("cafDateInput"),
+    cafCupButtons: Array.from(document.querySelectorAll("[data-caffeine-add]")),
+    cafPendingCups: byId("cafPendingCups"),
+    cafPendingMg: byId("cafPendingMg"),
+    cafClearBtn: byId("cafClearBtn"),
+    cafSubmitBtn: byId("cafSubmitBtn"),
+    cafDayNote: byId("cafDayNote"),
+    cafStatWeekAvg: byId("cafStatWeekAvg"),
+    cafStatMonthAvg: byId("cafStatMonthAvg"),
+    cafStatOverLimit: byId("cafStatOverLimit"),
+    cafCalendar: byId("cafCalendar"),
+    cafChart: byId("cafChart"),
+    cafHistory: byId("cafHistory"),
+    cafRangeButtons: Array.from(document.querySelectorAll(".ex-range-btn[data-caffeine-range]")),
 
     // Goals modal
     exGoalsModal: byId("exGoalsModal"),
@@ -503,6 +546,7 @@
 
   function bindEvents() {
     bindExerciseEvents();
+    bindCaffeineEvents();
     // Scroll-aware top bar (glass gets more opaque on scroll).
     const topBar = document.querySelector(".top-bar");
     if (topBar) {
@@ -855,6 +899,7 @@
     renderSignInBanner();
     renderTopTabs();
     renderExerciseDashboard();
+    renderCaffeineDashboard();
   }
 
   function openSidebar() {
@@ -2350,8 +2395,9 @@
     // Legacy field kept in state for compatibility with older clients, but unused.
     next.sidebarMode = next.sidebarMode === "analytics" ? "analytics" : "daily";
     next.viewMode = ["week", "heatmap"].includes(next.viewMode) ? next.viewMode : "week";
-    next.activeTopTab = next.activeTopTab === "exercise" ? "exercise" : "habits";
+    next.activeTopTab = TOP_TABS.includes(next.activeTopTab) ? next.activeTopTab : "habits";
     next.exercise = normalizeExerciseSlice(next.exercise);
+    next.caffeine = normalizeCaffeineSlice(next.caffeine);
 
     next.habits = Array.isArray(next.habits) ? next.habits : [];
     next.habits = next.habits
@@ -2434,6 +2480,7 @@
       entries: {},
       dayNotes: {},
       exercise: buildExerciseTemplate(),
+      caffeine: buildCaffeineTemplate(),
       cloud: {
         enabled: Boolean(CLOUD_BOOT_CONFIG.enabled),
         webAppUrl: normalizeCloudUrl(CLOUD_BOOT_CONFIG.webAppUrl),
@@ -3068,6 +3115,53 @@
     };
   }
 
+  function buildCaffeineTemplate() {
+    return {
+      goalCups: DEFAULT_CAFFEINE_GOAL_CUPS,
+      // { dateKey: [ { id, cups, createdAt }, ... ] } — one record per "send",
+      // so a day can hold several submissions and each stays individually
+      // deletable, the same shape meals/workouts use.
+      entries: {},
+    };
+  }
+
+  function normalizeCaffeineSlice(raw) {
+    const template = buildCaffeineTemplate();
+    const next = {
+      ...template,
+      ...(raw && typeof raw === "object" ? raw : {}),
+    };
+
+    next.goalCups = clampNumber(
+      roundTo(Number(next.goalCups) || DEFAULT_CAFFEINE_GOAL_CUPS, 2),
+      1,
+      20,
+    );
+
+    const cleanEntries = {};
+    const rawEntries = next.entries && typeof next.entries === "object" ? next.entries : {};
+    Object.keys(rawEntries).forEach((dateKey) => {
+      if (!isValidDateKey(dateKey)) return;
+      const list = Array.isArray(rawEntries[dateKey]) ? rawEntries[dateKey] : [];
+      const cleanList = list
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") return null;
+          const cups = roundTo(Number(entry.cups), 2);
+          if (!Number.isFinite(cups) || cups <= 0) return null;
+          return {
+            id: String(entry.id || `caf_${generateId()}`),
+            cups: clampNumber(cups, 0.25, CAFFEINE_MAX_CUPS_PER_DAY),
+            createdAt: String(entry.createdAt || new Date().toISOString()),
+          };
+        })
+        .filter(Boolean);
+      if (cleanList.length) cleanEntries[dateKey] = cleanList;
+    });
+    next.entries = cleanEntries;
+
+    return next;
+  }
+
   function normalizeExerciseSlice(raw) {
     const template = buildExerciseTemplate();
     const next = {
@@ -3437,6 +3531,73 @@
     return true;
   }
 
+  // ---------------------------------------------------------------------------
+  // Caffeine mutations + derived data
+  // ---------------------------------------------------------------------------
+
+  function cafAddEntry({ cups, dateKey }) {
+    const caf = state.caffeine;
+    const date = isValidDateKey(dateKey) ? dateKey : todayKey();
+    const value = roundTo(Number(cups) || 0, 2);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    if (!caf.entries[date]) caf.entries[date] = [];
+    caf.entries[date].push({
+      id: `caf_${generateId()}`,
+      cups: clampNumber(value, 0.25, CAFFEINE_MAX_CUPS_PER_DAY),
+      createdAt: new Date().toISOString(),
+    });
+    persistState();
+    return { cups: value, dateKey: date };
+  }
+
+  function cafDeleteEntry(dateKey, entryId) {
+    const caf = state.caffeine;
+    const list = caf.entries[dateKey] || [];
+    const idx = list.findIndex((e) => e.id === entryId);
+    if (idx < 0) return false;
+    list.splice(idx, 1);
+    if (list.length === 0) delete caf.entries[dateKey];
+    persistState();
+    return true;
+  }
+
+  function cafSetGoal(cups) {
+    const caf = state.caffeine;
+    caf.goalCups = clampNumber(roundTo(Number(cups) || DEFAULT_CAFFEINE_GOAL_CUPS, 2), 1, 20);
+    persistState();
+  }
+
+  function cafDayTotal(dateKey) {
+    const list = state.caffeine.entries[dateKey] || [];
+    return roundTo(
+      list.reduce((sum, e) => sum + e.cups, 0),
+      2,
+    );
+  }
+
+  // Average across every day in the window, including zero days — that's what
+  // makes "cups / day" comparable between a heavy week and a quiet one.
+  function cafAveragePerDay(days) {
+    if (days <= 0) return 0;
+    let total = 0;
+    for (let i = 0; i < days; i += 1) {
+      total += cafDayTotal(dateKeyDaysAgo(i));
+    }
+    return total / days;
+  }
+
+  function cafSelectedDate() {
+    const raw = refs.cafDateInput?.value;
+    return raw && isValidDateKey(raw) ? raw : todayKey();
+  }
+
+  function cafFormatCups(n) {
+    const v = Number(n) || 0;
+    // Quarter steps land on .25/.5/.75, so two decimals is the most we ever
+    // need — trim the noise otherwise.
+    return String(roundTo(v, 2)).replace(/\.0+$/, "");
+  }
+
   function exSetGoals(calories, protein) {
     const ex = state.exercise;
     ex.goals.calories = clampNumber(Math.round(Number(calories) || DEFAULT_GOAL_CALORIES), 500, 10000);
@@ -3449,20 +3610,22 @@
   // ===========================================================================
 
   function setTopTab(tab) {
-    const next = tab === "exercise" ? "exercise" : "habits";
+    const next = TOP_TABS.includes(tab) ? tab : "habits";
     if (state.activeTopTab === next) return;
     state.activeTopTab = next;
     persistState({ skipCloud: true });
     renderTopTabs();
     if (next === "exercise") {
       renderExerciseDashboard();
+    } else if (next === "caffeine") {
+      renderCaffeineDashboard();
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function renderTopTabs() {
     if (!refs.topTabButtons || !refs.habitsApp || !refs.exerciseApp) return;
-    const tab = state.activeTopTab === "exercise" ? "exercise" : "habits";
+    const tab = TOP_TABS.includes(state.activeTopTab) ? state.activeTopTab : "habits";
     refs.topTabButtons.forEach((btn) => {
       const isActive = btn.dataset.topTab === tab;
       btn.classList.toggle("active", isActive);
@@ -3470,6 +3633,7 @@
     });
     refs.habitsApp.hidden = tab !== "habits";
     refs.exerciseApp.hidden = tab !== "exercise";
+    if (refs.caffeineApp) refs.caffeineApp.hidden = tab !== "caffeine";
   }
 
   // ===========================================================================
@@ -4418,6 +4582,259 @@
   }
 
   // ===========================================================================
+  // Caffeine dashboard
+  // ===========================================================================
+
+  function renderCaffeineDashboard() {
+    if (!refs.caffeineApp) return;
+    setDateInputDefault(refs.cafDateInput);
+    refs.cafRangeButtons?.forEach((btn) => {
+      const isActive = String(btn.dataset.caffeineRange) === String(cafUi.rangeDays);
+      btn.classList.toggle("active", isActive);
+    });
+    renderCafDaySnapshot();
+    renderCafPending();
+    renderCafStats();
+    renderCafCalendar();
+    renderCafChart();
+    renderCafHistory();
+  }
+
+  function renderCafDaySnapshot() {
+    const caf = state.caffeine;
+    const date = cafSelectedDate();
+    const total = cafDayTotal(date);
+    const goal = caf.goalCups;
+
+    if (refs.cafSnapshotDateLabel) {
+      const d = fromDateKey(date);
+      refs.cafSnapshotDateLabel.textContent =
+        date === todayKey() ? "Today" : d ? formatDateShort(d) : date;
+    }
+    if (refs.cafDayCups) refs.cafDayCups.textContent = cafFormatCups(total);
+    if (refs.cafGoalCups) refs.cafGoalCups.textContent = cafFormatCups(goal);
+    if (refs.cafDayMg) {
+      refs.cafDayMg.textContent = `${Math.round(total * CAFFEINE_MG_PER_CUP)} mg caffeine`;
+    }
+    if (refs.cafDayBar) {
+      const pct = goal > 0 ? Math.min(100, (total / goal) * 100) : 0;
+      refs.cafDayBar.style.width = `${pct}%`;
+      // Over the limit flips the bar red rather than just pinning it at 100%,
+      // so a bad day is visible at a glance.
+      refs.cafDayBar.classList.toggle("over", total > goal);
+    }
+    if (refs.cafDayNote) {
+      refs.cafDayNote.textContent =
+        total > 0
+          ? `${cafFormatCups(total)} ${total === 1 ? "cup" : "cups"} logged for this day.`
+          : "Nothing logged for this day yet.";
+    }
+  }
+
+  function renderCafPending() {
+    const pending = cafUi.pendingCups;
+    if (refs.cafPendingCups) refs.cafPendingCups.textContent = cafFormatCups(pending);
+    if (refs.cafPendingMg) {
+      refs.cafPendingMg.textContent = `${Math.round(pending * CAFFEINE_MG_PER_CUP)} mg`;
+    }
+    if (refs.cafSubmitBtn) {
+      refs.cafSubmitBtn.disabled = pending <= 0;
+      const date = cafSelectedDate();
+      refs.cafSubmitBtn.textContent =
+        date === todayKey() ? "＋ Add to today" : `＋ Add to ${date.slice(5)}`;
+    }
+    if (refs.cafClearBtn) refs.cafClearBtn.disabled = pending <= 0;
+  }
+
+  function renderCafStats() {
+    const goal = state.caffeine.goalCups;
+    if (refs.cafStatWeekAvg) {
+      refs.cafStatWeekAvg.textContent = formatNumber(roundTo(cafAveragePerDay(7), 1));
+    }
+    if (refs.cafStatMonthAvg) {
+      refs.cafStatMonthAvg.textContent = formatNumber(roundTo(cafAveragePerDay(30), 1));
+    }
+    if (refs.cafStatOverLimit) {
+      let over = 0;
+      for (let i = 0; i < 30; i += 1) {
+        if (cafDayTotal(dateKeyDaysAgo(i)) > goal) over += 1;
+      }
+      refs.cafStatOverLimit.textContent = String(over);
+    }
+  }
+
+  function renderCafCalendar() {
+    if (!refs.cafCalendar) return;
+    const goal = state.caffeine.goalCups;
+    // Reverse-chronological so today sits top-left, matching the workout grid.
+    const days = lastNDateKeys(30).slice().reverse();
+    const todayK = todayKey();
+    const selected = cafSelectedDate();
+    const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    refs.cafCalendar.innerHTML = days
+      .map((dKey, idx) => {
+        const dayNum = dKey.slice(8);
+        const monthIdx = Number(dKey.slice(5, 7)) - 1;
+        const prevMonthIdx = idx > 0 ? Number(days[idx - 1].slice(5, 7)) - 1 : -1;
+        const showMonthPill = idx === 0 || monthIdx !== prevMonthIdx;
+        const monthPill = showMonthPill
+          ? `<span class="ex-day-month-pill">${monthShort[monthIdx]}</span>`
+          : "";
+        const total = cafDayTotal(dKey);
+        const classes = ["ex-day-cell"];
+        classes.push(total > 0 ? "filled" : "empty");
+        if (dKey === todayK) classes.push("is-today");
+        if (dKey === selected) classes.push("is-selected");
+        const color = total > goal ? "#b53b4f" : "#6f4429";
+        const body =
+          total > 0
+            ? `<span class="caf-day-cups">${cafFormatCups(total)}</span>
+               <span class="caf-day-mg">${Math.round(total * CAFFEINE_MG_PER_CUP)} mg</span>`
+            : "";
+        // Every cell is tappable: it moves the date picker to that day, which
+        // is how you backfill or review an earlier day.
+        return `
+          <button class="${classes.join(" ")}" type="button" data-caffeine-day="${escapeHtmlAttr(dKey)}" style="--type-color:${color}">
+            ${monthPill}
+            <span class="ex-day-num">${dayNum}</span>
+            ${body}
+          </button>
+        `;
+      })
+      .join("");
+  }
+
+  function renderCafChart() {
+    if (!refs.cafChart) return;
+    const caf = state.caffeine;
+    const goal = caf.goalCups;
+    const logged = Object.keys(caf.entries).filter((k) => (caf.entries[k] || []).length > 0);
+
+    if (logged.length === 0) {
+      refs.cafChart.innerHTML = '<p class="ex-empty">Log a coffee to start building your history.</p>';
+      return;
+    }
+
+    const todayK = todayKey();
+    let startKey;
+    if (cafUi.rangeDays === "all") {
+      startKey = logged.slice().sort()[0];
+    } else {
+      startKey = dateKeyDaysAgo(Number(cafUi.rangeDays) - 1);
+    }
+    // Walk every calendar day in the window (not just logged ones) so gaps read
+    // as real zero-caffeine days instead of being collapsed away.
+    const span = Math.max(1, daysBetween(startKey, todayK) + 1);
+    const days = [];
+    for (let i = span - 1; i >= 0; i -= 1) {
+      days.push(dateKeyDaysAgo(i));
+    }
+
+    const values = days.map((d) => cafDayTotal(d));
+    if (values.every((v) => v === 0)) {
+      refs.cafChart.innerHTML = '<p class="ex-empty">No caffeine logged in this range.</p>';
+      return;
+    }
+
+    const padT = 14;
+    const padR = 12;
+    const padB = 26;
+    const padL = 34;
+    const plotH = 150;
+    const plotW = Math.max(300, Math.min(760, days.length * 22));
+    const width = padL + plotW + padR;
+    const height = padT + plotH + padB;
+
+    const maxV = Math.max(goal, ...values);
+    const yMax = Math.max(1, Math.ceil(maxV * 1.15 * 2) / 2);
+    const yAt = (v) => padT + plotH - (v / yMax) * plotH;
+
+    const ticks = [0, yMax / 2, yMax];
+    const grid = ticks
+      .map((v) => {
+        const y = yAt(v);
+        return `<line x1="${padL}" y1="${y}" x2="${padL + plotW}" y2="${y}" class="chart-grid"></line>
+                <text x="${padL - 6}" y="${y + 3}" class="chart-y-label" text-anchor="end">${cafFormatCups(roundTo(v, 1))}</text>`;
+      })
+      .join("");
+
+    const slot = plotW / days.length;
+    const barW = Math.max(1.5, Math.min(18, slot * 0.68));
+    const bars = days
+      .map((dKey, i) => {
+        const v = values[i];
+        if (v <= 0) return "";
+        const x = padL + slot * i + (slot - barW) / 2;
+        const y = yAt(v);
+        const h = Math.max(1, padT + plotH - y);
+        const cls = v > goal ? "caf-bar over" : "caf-bar";
+        const r = Math.min(2.5, barW / 2);
+        return `<rect class="${cls}" x="${x}" y="${y}" width="${barW}" height="${h}" rx="${r}"><title>${dKey}: ${cafFormatCups(v)} cups</title></rect>`;
+      })
+      .join("");
+
+    const goalY = yAt(goal);
+    const goalLine = `<line x1="${padL}" y1="${goalY}" x2="${padL + plotW}" y2="${goalY}" class="caf-goal-line"></line>`;
+
+    const labelIdx = new Set([0, days.length - 1]);
+    if (days.length > 4) {
+      labelIdx.add(Math.floor(days.length / 3));
+      labelIdx.add(Math.floor((days.length * 2) / 3));
+    }
+    const xLabels = days
+      .map((dKey, i) => {
+        if (!labelIdx.has(i)) return "";
+        const x = padL + slot * i + slot / 2;
+        return `<text x="${x}" y="${padT + plotH + 16}" class="chart-x-label" text-anchor="middle">${dKey.slice(5)}</text>`;
+      })
+      .join("");
+
+    refs.cafChart.innerHTML = `
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" class="ex-chart-svg" role="img" aria-label="Caffeine per day">
+        ${grid}
+        <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + plotH}" class="chart-axis"></line>
+        <line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" class="chart-axis"></line>
+        ${bars}
+        ${goalLine}
+        ${xLabels}
+      </svg>
+    `;
+  }
+
+  function renderCafHistory() {
+    if (!refs.cafHistory) return;
+    const caf = state.caffeine;
+    const rows = [];
+    Object.keys(caf.entries).forEach((dKey) => {
+      (caf.entries[dKey] || []).forEach((entry) => {
+        rows.push({ dateKey: dKey, ...entry });
+      });
+    });
+    if (rows.length === 0) {
+      refs.cafHistory.innerHTML = '<p class="ex-empty">No entries yet.</p>';
+      return;
+    }
+    rows.sort((a, b) => {
+      if (a.dateKey !== b.dateKey) return a.dateKey < b.dateKey ? 1 : -1;
+      return String(a.createdAt) < String(b.createdAt) ? 1 : -1;
+    });
+
+    refs.cafHistory.innerHTML = rows
+      .slice(0, 14)
+      .map((r) => {
+        const time = formatTimeOfDay(r.createdAt);
+        const when = time ? `${r.dateKey} · ${time}` : r.dateKey;
+        return `<div class="ex-weight-row">
+            <span class="ex-weight-date">${escapeHtml(when)}</span>
+            <span class="ex-weight-kg">${cafFormatCups(r.cups)} <span class="muted">cups</span></span>
+            <button class="ex-weight-del" type="button" data-delete-caffeine="${escapeHtmlAttr(r.dateKey)}|${escapeHtmlAttr(r.id)}" aria-label="Delete">✕</button>
+          </div>`;
+      })
+      .join("");
+  }
+
+  // ===========================================================================
   // Event binding
   // ===========================================================================
   function bindExerciseEvents() {
@@ -4611,9 +5028,100 @@
     });
   }
 
+  function bindCaffeineEvents() {
+    // Cup buttons build up a pending basket; nothing is saved until "Add to day".
+    refs.cafCupButtons?.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const amount = Number(btn.dataset.caffeineAdd);
+        if (!Number.isFinite(amount) || amount <= 0) return;
+        cafUi.pendingCups = roundTo(cafUi.pendingCups + amount, 2);
+        renderCafPending();
+        // Re-trigger the pop by clearing the class before re-adding it.
+        btn.classList.remove("just-added");
+        void btn.offsetWidth;
+        btn.classList.add("just-added");
+      });
+      btn.addEventListener("animationend", () => btn.classList.remove("just-added"));
+    });
+
+    refs.cafClearBtn?.addEventListener("click", () => {
+      cafUi.pendingCups = 0;
+      renderCafPending();
+    });
+    refs.cafSubmitBtn?.addEventListener("click", () => handleCafSubmit());
+
+    refs.cafDateInput?.addEventListener("change", () => {
+      renderCafDaySnapshot();
+      renderCafPending();
+      renderCafCalendar();
+    });
+
+    // Tapping any day in the grid moves the date picker there, which is how
+    // you backfill or inspect an earlier day.
+    refs.cafCalendar?.addEventListener("click", (e) => {
+      const cell = e.target.closest("[data-caffeine-day]");
+      if (!cell || !refs.cafDateInput) return;
+      refs.cafDateInput.value = cell.dataset.caffeineDay;
+      renderCafDaySnapshot();
+      renderCafPending();
+      renderCafCalendar();
+    });
+
+    refs.cafRangeButtons?.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const v = btn.dataset.caffeineRange;
+        cafUi.rangeDays = v === "all" ? "all" : Number(v);
+        refs.cafRangeButtons.forEach((b) => b.classList.toggle("active", b === btn));
+        renderCafChart();
+      });
+    });
+
+    refs.cafHistory?.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-delete-caffeine]");
+      if (!btn) return;
+      const [dKey, id] = btn.dataset.deleteCaffeine.split("|");
+      if (!dKey || !id) return;
+      if (window.confirm(`Delete this caffeine entry from ${dKey}?`)) {
+        cafDeleteEntry(dKey, id);
+        renderCaffeineDashboard();
+        showToast("Entry deleted.");
+      }
+    });
+
+    refs.cafEditGoalBtn?.addEventListener("click", () => {
+      if (!refs.cafGoalModal || !refs.cafGoalInput) return;
+      refs.cafGoalInput.value = state.caffeine.goalCups;
+      refs.cafGoalModal.showModal();
+    });
+    refs.cafSaveGoalBtn?.addEventListener("click", () => {
+      cafSetGoal(refs.cafGoalInput.value);
+      refs.cafGoalModal.close();
+      renderCaffeineDashboard();
+      showToast("Daily limit updated.");
+    });
+    refs.cafCloseGoalBtn?.addEventListener("click", () => refs.cafGoalModal.close());
+  }
+
   // ---------------------------------------------------------------------------
   // Handlers
   // ---------------------------------------------------------------------------
+  function handleCafSubmit() {
+    const pending = cafUi.pendingCups;
+    if (!Number.isFinite(pending) || pending <= 0) {
+      showToast("Tap a cup first.");
+      return;
+    }
+    const result = cafAddEntry({ cups: pending, dateKey: cafSelectedDate() });
+    if (!result) {
+      showToast("Couldn't log caffeine.");
+      return;
+    }
+    cafUi.pendingCups = 0;
+    renderCaffeineDashboard();
+    const day = result.dateKey === todayKey() ? "today" : result.dateKey;
+    showToast(`${cafFormatCups(result.cups)} cups logged (${day}).`);
+  }
+
   function handleAddMeal() {
     const calories = parseLocaleNumber(refs.exMealCaloriesInput.value);
     const protein = parseLocaleNumber(refs.exMealProteinInput.value);
