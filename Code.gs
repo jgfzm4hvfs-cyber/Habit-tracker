@@ -3,6 +3,10 @@ const HEADERS = ['user_id', 'updated_at', 'state_json'];
 const SPREADSHEET_ID_PROPERTY = 'HABIT_TRACKER_SPREADSHEET_ID';
 const ALLOWED_EMAIL_PROPERTY = 'HABIT_TRACKER_ALLOWED_EMAIL';
 const GOOGLE_CLIENT_ID_PROPERTY = 'HABIT_TRACKER_GOOGLE_CLIENT_ID';
+const SESSION_SECRET_PROPERTY = 'HABIT_TRACKER_SESSION_SECRET';
+const TELEGRAM_BOT_TOKEN_PROPERTY = 'HABIT_TRACKER_TELEGRAM_BOT_TOKEN';
+const TELEGRAM_CHAT_ID_PROPERTY = 'HABIT_TRACKER_TELEGRAM_CHAT_ID';
+const SESSION_LIFETIME_SECONDS = 90 * 24 * 60 * 60; // 90 days
 
 function doGet(e) {
   return handleRequest_(e);
@@ -17,9 +21,30 @@ function handleRequest_(e) {
     const req = parseRequest_(e);
     const action = String(req.action || '').trim();
     const idToken = String(req.idToken || '').trim();
+    const sessionToken = String(req.sessionToken || '').trim();
     const userId = sanitizeUserId_(req.userId || 'default');
 
-    assertAuthorized_(idToken);
+    // exchange-token is special: requires a fresh Google ID token, returns a session token.
+    if (action === 'exchange-token') {
+      if (!idToken) {
+        throw new Error('Google ID token required for exchange');
+      }
+      const tokenInfo = assertGoogleIdTokenValid_(idToken);
+      const email = String(tokenInfo.email || '').trim().toLowerCase();
+      const newSessionToken = issueSessionToken_(email);
+      ensureSheet_();
+      return json_({
+        ok: true,
+        sessionToken: newSessionToken,
+        expiresAt: new Date(
+          (Math.floor(Date.now() / 1000) + SESSION_LIFETIME_SECONDS) * 1000,
+        ).toISOString(),
+      });
+    }
+
+    // For all other actions: accept either session token OR Google ID token.
+    const authToken = sessionToken || idToken;
+    assertAuthorized_(authToken);
     ensureSheet_();
 
     if (action === 'ping') {
@@ -99,7 +124,30 @@ function parseRequest_(e) {
   return merged;
 }
 
-function assertAuthorized_(idToken) {
+/**
+ * Dispatches to the correct verifier based on token shape.
+ * - Session tokens (issued by this server): 2 dot-separated parts (payload.signature)
+ * - Google ID tokens: 3 dot-separated parts (header.payload.signature)
+ */
+function assertAuthorized_(token) {
+  if (!token || typeof token !== 'string') {
+    throw new Error('Unauthorized');
+  }
+  const dotCount = (token.match(/\./g) || []).length;
+  if (dotCount === 1) {
+    verifySessionToken_(token);
+  } else if (dotCount === 2) {
+    assertGoogleIdTokenValid_(token);
+  } else {
+    throw new Error('Unauthorized');
+  }
+}
+
+/**
+ * Verifies a Google ID token against the allowlist and Client ID, and returns the parsed info.
+ * Throws on any verification failure.
+ */
+function assertGoogleIdTokenValid_(idToken) {
   const allowedEmail = String(
     PropertiesService.getScriptProperties().getProperty(ALLOWED_EMAIL_PROPERTY) || '',
   ).trim().toLowerCase();
@@ -136,6 +184,8 @@ function assertAuthorized_(idToken) {
   if (!Number.isFinite(expSeconds) || expSeconds <= Math.floor(Date.now() / 1000) - 30) {
     throw new Error('Unauthorized');
   }
+
+  return tokenInfo;
 }
 
 function verifyGoogleIdToken_(idToken) {
@@ -263,4 +313,249 @@ function authorizeUrlFetch_() {
     muteHttpExceptions: true,
   });
   Logger.log(r.getResponseCode());
+}
+
+// =============================================================================
+// Session tokens (server-issued, HMAC-signed, 90-day lifetime)
+// =============================================================================
+
+/**
+ * Returns the HMAC signing secret, generating one on first use.
+ * Stored in Script Properties so tokens survive across deployments.
+ * Rotating this value invalidates all outstanding session tokens.
+ */
+function getOrCreateSessionSecret_() {
+  const props = PropertiesService.getScriptProperties();
+  let secret = props.getProperty(SESSION_SECRET_PROPERTY);
+  if (!secret) {
+    // Mix UUIDs and time for ~256 bits of entropy.
+    const entropy =
+      Utilities.getUuid() + Utilities.getUuid() + Utilities.getUuid() + String(Date.now());
+    const hashBytes = Utilities.computeHmacSha256Signature(entropy, String(Date.now()));
+    secret = hashBytes
+      .map(function (b) {
+        return ('0' + ((b + 256) % 256).toString(16)).slice(-2);
+      })
+      .join('');
+    props.setProperty(SESSION_SECRET_PROPERTY, secret);
+  }
+  return secret;
+}
+
+/**
+ * Call this from the Apps Script editor to invalidate ALL session tokens
+ * (e.g. if you think one leaked). Next request from any device will force re-login.
+ */
+function rotateSessionSecret() {
+  const props = PropertiesService.getScriptProperties();
+  props.deleteProperty(SESSION_SECRET_PROPERTY);
+  getOrCreateSessionSecret_(); // regenerate
+  Logger.log('Session secret rotated. All existing session tokens are now invalid.');
+}
+
+function base64UrlEncode_(data) {
+  return String(Utilities.base64EncodeWebSafe(data)).replace(/=+$/, '');
+}
+
+function base64UrlDecodeToString_(b64url) {
+  let padded = b64url;
+  while (padded.length % 4 !== 0) padded += '=';
+  const bytes = Utilities.base64DecodeWebSafe(padded);
+  return Utilities.newBlob(bytes).getDataAsString('utf-8');
+}
+
+function issueSessionToken_(email) {
+  const secret = getOrCreateSessionSecret_();
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    email: String(email || '').toLowerCase(),
+    iat: now,
+    exp: now + SESSION_LIFETIME_SECONDS,
+    v: 1,
+  };
+  const payloadB64 = base64UrlEncode_(JSON.stringify(payload));
+  const signatureBytes = Utilities.computeHmacSha256Signature(payloadB64, secret);
+  const signatureB64 = base64UrlEncode_(signatureBytes);
+  return payloadB64 + '.' + signatureB64;
+}
+
+function verifySessionToken_(token) {
+  if (!token || typeof token !== 'string') {
+    throw new Error('Unauthorized');
+  }
+  const parts = token.split('.');
+  if (parts.length !== 2) {
+    throw new Error('Unauthorized');
+  }
+  const payloadB64 = parts[0];
+  const signatureB64 = parts[1];
+
+  const secret = getOrCreateSessionSecret_();
+  const expectedBytes = Utilities.computeHmacSha256Signature(payloadB64, secret);
+  const expectedB64 = base64UrlEncode_(expectedBytes);
+
+  if (!constantTimeEquals_(signatureB64, expectedB64)) {
+    throw new Error('Unauthorized');
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(base64UrlDecodeToString_(payloadB64));
+  } catch (e) {
+    throw new Error('Unauthorized');
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (!payload.exp || Number(payload.exp) < now) {
+    throw new Error('Session expired');
+  }
+
+  const allowedEmail = String(
+    PropertiesService.getScriptProperties().getProperty(ALLOWED_EMAIL_PROPERTY) || '',
+  ).trim().toLowerCase();
+  if (!allowedEmail) {
+    throw new Error('Server email allowlist not configured');
+  }
+
+  if (String(payload.email || '').toLowerCase() !== allowedEmail) {
+    throw new Error('Unauthorized');
+  }
+
+  return payload;
+}
+
+function constantTimeEquals_(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+// =============================================================================
+// Daily reminder (Telegram bot push notification)
+// =============================================================================
+
+// Bot token and chat id live in Script Properties, never in this file — it is
+// mirrored to a public repo. Set them once under
+// Project Settings → Script Properties (see SETUP.md).
+const APP_URL = 'https://jgfzm4hvfs-cyber.github.io/Habit-tracker/';
+const REMINDER_USER_ID = 'default';
+const REMINDER_MESSAGE =
+  "🔔 <b>Discipline OS</b>\n\nYou haven't logged any habits today.";
+
+/**
+ * Time-driven trigger target. Reads state from the Sheet, counts today's
+ * completions, and sends an ntfy notification only if zero are logged.
+ * Safe to run manually (Run ▶) to force a check right now.
+ */
+function dailyReminderCheck() {
+  try {
+    ensureSheet_();
+    const row = findUserRow_(REMINDER_USER_ID);
+    if (!row) {
+      Logger.log('No state row yet; sending reminder anyway.');
+      sendTelegramReminder_();
+      return;
+    }
+
+    const rawState = String(row.values[2] || '');
+    let state;
+    try {
+      state = rawState ? JSON.parse(rawState) : {};
+    } catch (error) {
+      Logger.log('State JSON parse failed: ' + error);
+      state = {};
+    }
+
+    const tz = Session.getScriptTimeZone() || 'Etc/UTC';
+    const todayKey = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+    let completedToday = 0;
+    const entries = state && state.entries ? state.entries : {};
+    Object.keys(entries).forEach(function (habitId) {
+      const byDate = entries[habitId] || {};
+      const entry = byDate[todayKey];
+      if (entry && entry.completed) {
+        completedToday += 1;
+      }
+    });
+
+    Logger.log('Completed today: ' + completedToday);
+    if (completedToday === 0) {
+      sendTelegramReminder_();
+    } else {
+      Logger.log('User already logged ' + completedToday + ' habit(s); no reminder sent.');
+    }
+  } catch (error) {
+    Logger.log('dailyReminderCheck failed: ' + error);
+  }
+}
+
+function sendTelegramReminder_() {
+  const props = PropertiesService.getScriptProperties();
+  const token = String(props.getProperty(TELEGRAM_BOT_TOKEN_PROPERTY) || '').trim();
+  const chatId = String(props.getProperty(TELEGRAM_CHAT_ID_PROPERTY) || '').trim();
+  // Fail loudly instead of firing a malformed request at Telegram, so a missing
+  // property shows up as a clear log line rather than a silent 404.
+  if (!token || !chatId) {
+    Logger.log(
+      'Telegram reminder skipped: set ' +
+        TELEGRAM_BOT_TOKEN_PROPERTY +
+        ' and ' +
+        TELEGRAM_CHAT_ID_PROPERTY +
+        ' in Project Settings → Script Properties.',
+    );
+    return;
+  }
+
+  const endpoint = 'https://api.telegram.org/bot' + token + '/sendMessage';
+  const response = UrlFetchApp.fetch(endpoint, {
+    method: 'post',
+    payload: {
+      chat_id: chatId,
+      text: REMINDER_MESSAGE,
+      parse_mode: 'HTML',
+      disable_web_page_preview: 'true',
+    },
+    muteHttpExceptions: true,
+  });
+  Logger.log('Telegram status: ' + response.getResponseCode() + ' — ' + response.getContentText().slice(0, 200));
+}
+
+/**
+ * Run this ONCE from the Apps Script editor to schedule the 8:00 PM daily
+ * reminder trigger. Safe to re-run — it removes any existing triggers for
+ * dailyReminderCheck first, then creates a fresh one.
+ */
+function setupDailyTrigger() {
+  removeDailyTriggers();
+  ScriptApp.newTrigger('dailyReminderCheck')
+    .timeBased()
+    .everyDays(1)
+    .atHour(20) // 8 PM in the script's timezone
+    .create();
+  Logger.log('Daily 8 PM trigger created. Timezone: ' + Session.getScriptTimeZone());
+}
+
+function removeDailyTriggers() {
+  const triggers = ScriptApp.getProjectTriggers();
+  let removed = 0;
+  triggers.forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === 'dailyReminderCheck') {
+      ScriptApp.deleteTrigger(trigger);
+      removed += 1;
+    }
+  });
+  Logger.log('Removed ' + removed + ' existing reminder trigger(s).');
+}
+
+/**
+ * Run this from the Apps Script editor to send a test notification right now
+ * (bypasses the "zero habits today" check). Useful for confirming setup.
+ */
+function testTelegramNotification() {
+  sendTelegramReminder_();
 }

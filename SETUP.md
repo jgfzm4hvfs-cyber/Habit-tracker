@@ -27,6 +27,15 @@ In Apps Script `Project Settings` -> `Script properties`, add:
 - `HABIT_TRACKER_ALLOWED_EMAIL` = your Google email (lowercase)
 - `HABIT_TRACKER_GOOGLE_CLIENT_ID` = OAuth Client ID from step 1
 
+Only if you use the daily Telegram reminder:
+
+- `HABIT_TRACKER_TELEGRAM_BOT_TOKEN` = bot token from @BotFather
+- `HABIT_TRACKER_TELEGRAM_CHAT_ID` = your Telegram chat ID
+
+These two are read at send time. Leave them unset and the reminder simply
+skips with a note in the log. Keep them here rather than in `Code.gs` — that
+file is mirrored to a public repo.
+
 ## 4) Deploy web app
 
 1. `Deploy` -> `New deployment`.
