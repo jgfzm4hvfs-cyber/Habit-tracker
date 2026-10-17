@@ -9,6 +9,7 @@
   const BOOT_SYNC_MAX_WAIT_MS = 8000;
   const BOOT_SYNC_MIN_VISIBLE_MS = 450;
   const LOCAL_STATE_KEY = "discipline_os_state_v2";
+  const LOCAL_PENDING_KEY = "discipline_os_pending_v1";
   const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const HABIT_TYPE_CORNERSTONE = "cornerstone";
   const HABIT_TYPE_REGULAR = "regular";
@@ -132,7 +133,7 @@
   // Caffeine: a "cup" is the unit the user logs in (quarter / half / whole).
   // ~95 mg is the common figure for a 240 ml brewed coffee, used only to show
   // an informative mg number next to the cup count.
-  const TOP_TABS = ["habits", "exercise", "caffeine"];
+  const TOP_TABS = ["habits", "exercise", "caffeine", "amulet"];
   const CAFFEINE_MG_PER_CUP = 95;
   const DEFAULT_CAFFEINE_GOAL_CUPS = 4;
   const CAFFEINE_MAX_CUPS_PER_DAY = 40;
@@ -266,7 +267,8 @@
     inFlight: false,
     pushTimer: null,
     pullTimer: null,
-    hasLocalChanges: false,
+    hasLocalChanges: readLocalPendingChanges(),
+    changeRevision: 0,
     lastPullReason: "none",
     status: "local",
     message: "Local only",
@@ -367,6 +369,8 @@
     habitsApp: byId("habitsApp"),
     exerciseApp: byId("exerciseApp"),
     caffeineApp: byId("caffeineApp"),
+    amuletApp: byId("amuletApp"),
+    folderToggles: Array.from(document.querySelectorAll("[data-folder-toggle]")),
 
     // Snapshot
     exSnapshotDateLabel: byId("exSnapshotDateLabel"),
@@ -501,6 +505,13 @@
     exCloseWorkoutEditBtn: byId("exCloseWorkoutEditBtn"),
   };
 
+  window.Amulet.mount({
+    root: refs.amuletApp,
+    getState: () => state.amulet,
+    commit: () => persistState(),
+    toast: showToast,
+  });
+
   initialize();
 
   function initialize() {
@@ -547,6 +558,56 @@
   function bindEvents() {
     bindExerciseEvents();
     bindCaffeineEvents();
+    window.addEventListener("online", () => {
+      if (cloudRuntime.hasLocalChanges && canUseCloudSync() && state.cloud.lastSyncedAt) {
+        scheduleCloudPush({ delayMs: 100, statusMessage: "Saving offline changes..." });
+      }
+    });
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch(() => {
+          // Online use still works when the browser disallows offline storage.
+        });
+      });
+    }
+    refs.folderToggles.forEach((input) => {
+      input.addEventListener("change", () => {
+        const folder = input.dataset.folderToggle;
+        const visible = new Set(state.visibleTopTabs);
+        if (input.checked) visible.add(folder);
+        else visible.delete(folder);
+        if (!visible.size) {
+          input.checked = true;
+          showToast("Keep at least one folder visible.");
+          return;
+        }
+        state.visibleTopTabs = TOP_TABS.filter((tab) => visible.has(tab));
+        if (!state.visibleTopTabs.includes(state.activeTopTab)) {
+          state.activeTopTab = state.visibleTopTabs[0];
+        }
+        persistState();
+        renderTopTabs();
+        window.Amulet.render();
+      });
+    });
+    document.querySelector(".top-tab-switch").addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      const buttons = refs.topTabButtons.filter((button) => !button.hidden);
+      const current = buttons.indexOf(document.activeElement);
+      if (current < 0) return;
+      event.preventDefault();
+      const index = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
+        : (current + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[index].focus();
+      setTopTab(buttons[index].dataset.topTab);
+    });
+    // Refresh calendar dates after the phone returns from sleep or crosses midnight.
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) renderAll();
+    });
+    window.setInterval(() => {
+      if (!document.hidden) window.Amulet.render();
+    }, 60000);
     // Scroll-aware top bar (glass gets more opaque on scroll).
     const topBar = document.querySelector(".top-bar");
     if (topBar) {
@@ -836,7 +897,6 @@
       renderSyncPanel();
       if (!state.cloud.enabled) {
         clearCloudTimers();
-        cloudRuntime.hasLocalChanges = false;
         updateSyncStatus("local", "Local only");
       } else {
         startCloudPullTicker();
@@ -900,6 +960,7 @@
     renderTopTabs();
     renderExerciseDashboard();
     renderCaffeineDashboard();
+    window.Amulet.render();
   }
 
   function openSidebar() {
@@ -2044,6 +2105,9 @@
       return false;
     }
 
+    if (cloudRuntime.hasLocalChanges && state.cloud.lastSyncedAt) {
+      return pushToCloud({ reason: "auto" });
+    }
     updateSyncStatus("syncing", "Starting cloud sync...");
 
     const pulled = await pullFromCloud({ interactive: false, force: false });
@@ -2171,7 +2235,7 @@
         return false;
       }
 
-      if (!interactive && !state.cloud.lastSyncedAt && hasMeaningfulLocalData() && !force) {
+      if (!interactive && !state.cloud.lastSyncedAt && (hasMeaningfulLocalData() || cloudRuntime.hasLocalChanges) && !force) {
         updateSyncStatus("local", "Cloud connected. Push local data first");
         cloudRuntime.lastPullReason = "needs_manual_push";
         return false;
@@ -2246,6 +2310,11 @@
 
   async function pushToCloud(options = {}) {
     const { reason = "auto" } = options;
+    if (reason === "auto" && !state.cloud.lastSyncedAt) {
+      updateSyncStatus("local", "First sync needs a manual Push or Pull in cloud settings");
+      renderSyncPanel();
+      return false;
+    }
 
     if (!canUseCloudSync()) {
       return false;
@@ -2260,6 +2329,7 @@
     updateSyncStatus("syncing", reason === "manual" ? "Pushing..." : "Syncing...");
     renderAll();
 
+    const uploadedRevision = cloudRuntime.changeRevision;
     try {
       const response = await requestCloudApi("push", {
         state: buildCloudPayload(),
@@ -2267,9 +2337,13 @@
       });
 
       state.cloud.lastSyncedAt = String(response.updatedAt || new Date().toISOString());
-      cloudRuntime.hasLocalChanges = false;
+      cloudRuntime.hasLocalChanges = cloudRuntime.changeRevision !== uploadedRevision;
       persistState({ skipCloud: true, silent: true });
-      updateSyncStatus("synced", "Synced");
+      if (cloudRuntime.hasLocalChanges) {
+        scheduleCloudPush({ delayMs: CLOUD_PUSH_RETRY_MS, statusMessage: "Saving latest changes..." });
+      } else {
+        updateSyncStatus("synced", "Synced");
+      }
       return true;
     } catch (error) {
       cloudRuntime.hasLocalChanges = true;
@@ -2356,7 +2430,7 @@
   }
 
   function hasMeaningfulLocalData() {
-    return getTotalCompletions() > 0 || Object.keys(state.dayNotes).length > 0;
+    return getTotalCompletions() > 0 || Object.keys(state.dayNotes).length > 0 || window.Amulet.hasData(state.amulet);
   }
 
   function getTotalCompletions() {
@@ -2396,6 +2470,11 @@
     next.sidebarMode = next.sidebarMode === "analytics" ? "analytics" : "daily";
     next.viewMode = ["week", "heatmap"].includes(next.viewMode) ? next.viewMode : "week";
     next.activeTopTab = TOP_TABS.includes(next.activeTopTab) ? next.activeTopTab : "habits";
+    next.visibleTopTabs = Array.isArray(next.visibleTopTabs)
+      ? TOP_TABS.filter((tab) => next.visibleTopTabs.includes(tab)) : [...TOP_TABS];
+    if (!next.visibleTopTabs.length) next.visibleTopTabs = [...TOP_TABS];
+    if (!next.visibleTopTabs.includes(next.activeTopTab)) next.activeTopTab = next.visibleTopTabs[0];
+    next.amulet = window.Amulet.normalize(next.amulet);
     next.exercise = normalizeExerciseSlice(next.exercise);
     next.caffeine = normalizeCaffeineSlice(next.caffeine);
 
@@ -2476,6 +2555,8 @@
       sidebarMode: "daily",
       viewMode: "week",
       activeTopTab: "habits",
+      visibleTopTabs: [...TOP_TABS],
+      amulet: window.Amulet.buildTemplate(),
       habits: cloneData(DEFAULT_HABITS),
       entries: {},
       dayNotes: {},
@@ -2537,9 +2618,22 @@
   }
 
   function persistState(options = {}) {
+    if (!options.skipCloud) {
+      cloudRuntime.changeRevision += 1;
+      cloudRuntime.hasLocalChanges = true;
+    }
     saveStateLocally();
     if (!options.skipCloud) {
       scheduleCloudPush();
+    }
+  }
+
+  function readLocalPendingChanges() {
+    try {
+      return window.localStorage.getItem(LOCAL_PENDING_KEY) === "1"
+        && Boolean(window.localStorage.getItem(LOCAL_STATE_KEY));
+    } catch (_) {
+      return false;
     }
   }
 
@@ -2567,6 +2661,8 @@
 
     try {
       window.localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(state));
+      if (cloudRuntime.hasLocalChanges) window.localStorage.setItem(LOCAL_PENDING_KEY, "1");
+      else window.localStorage.removeItem(LOCAL_PENDING_KEY);
     } catch (error) {
       // Ignore storage failures (private mode / quota).
     }
@@ -3610,30 +3706,43 @@
   // ===========================================================================
 
   function setTopTab(tab) {
-    const next = TOP_TABS.includes(tab) ? tab : "habits";
+    const next = state.visibleTopTabs.includes(tab) ? tab : state.visibleTopTabs[0];
     if (state.activeTopTab === next) return;
     state.activeTopTab = next;
     persistState({ skipCloud: true });
     renderTopTabs();
-    if (next === "exercise") {
-      renderExerciseDashboard();
-    } else if (next === "caffeine") {
-      renderCaffeineDashboard();
-    }
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (next === "exercise") renderExerciseDashboard();
+    else if (next === "caffeine") renderCaffeineDashboard();
+    else if (next === "amulet") window.Amulet.render();
+    window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }
 
   function renderTopTabs() {
-    if (!refs.topTabButtons || !refs.habitsApp || !refs.exerciseApp) return;
-    const tab = TOP_TABS.includes(state.activeTopTab) ? state.activeTopTab : "habits";
+    const visible = state.visibleTopTabs;
+    const tab = visible.includes(state.activeTopTab) ? state.activeTopTab : visible[0];
+    state.activeTopTab = tab;
     refs.topTabButtons.forEach((btn) => {
-      const isActive = btn.dataset.topTab === tab;
+      const name = btn.dataset.topTab;
+      const isActive = name === tab;
+      btn.hidden = !visible.includes(name);
+      btn.id = `top-tab-${name}`;
+      btn.setAttribute("aria-controls", `${name}App`);
       btn.classList.toggle("active", isActive);
-      btn.setAttribute("aria-selected", isActive ? "true" : "false");
+      btn.setAttribute("aria-selected", String(isActive));
+      btn.tabIndex = isActive ? 0 : -1;
+      const pane = byId(`${name}App`);
+      if (pane) {
+        pane.hidden = !isActive;
+        pane.setAttribute("role", "tabpanel");
+        pane.setAttribute("aria-labelledby", btn.id);
+      }
     });
-    refs.habitsApp.hidden = tab !== "habits";
-    refs.exerciseApp.hidden = tab !== "exercise";
-    if (refs.caffeineApp) refs.caffeineApp.hidden = tab !== "caffeine";
+    refs.folderToggles.forEach((input) => {
+      input.checked = visible.includes(input.dataset.folderToggle);
+      input.disabled = input.checked && visible.length === 1;
+    });
+    document.body.classList.toggle("amulet-active", tab === "amulet");
+    document.querySelector('meta[name="theme-color"]').content = tab === "amulet" ? "#e8e9ee" : "#151515";
   }
 
   // ===========================================================================
