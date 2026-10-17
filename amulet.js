@@ -364,9 +364,10 @@
 
   function renderChart(slice, view) {
     const now = today();
+    const daily = goalStats(slice, now, now, view);
     const seven = goalStats(slice, shiftDate(now, -6), now, view);
     const thirty = goalStats(slice, shiftDate(now, -29), now, view);
-    $("am-chart-summary").innerHTML = `<div class="am-stat-seven"><strong>${seven.percent}<span>%</span></strong><span class="am-muted">7-day average</span></div><div class="am-stat-thirty"><strong>${thirty.percent}<span>%</span></strong><span class="am-muted">30-day average</span></div>`;
+    $("am-chart-summary").innerHTML = `<div class="am-stat-daily"><strong>${daily.percent}<span>%</span></strong><span class="am-muted">Daily</span></div><div class="am-stat-seven"><strong>${seven.percent}<span>%</span></strong><span class="am-muted">7-day avg</span></div><div class="am-stat-thirty"><strong>${thirty.percent}<span>%</span></strong><span class="am-muted">30-day avg</span></div>`;
     const firstDate = slice.habits.reduce((first, h) => h.createdOn < first ? h.createdOn : first, now);
     const from = shiftDate(now, -29) < firstDate ? firstDate : shiftDate(now, -29);
     const dates = [];
@@ -374,8 +375,8 @@
     const x = i => 36 + (dates.length === 1 ? 1 : i / (dates.length - 1)) * 552;
     const y = n => 148 - n * 1.24;
     const points = days => dates.map((d, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(goalStats(slice, shiftDate(d, 1 - days), d, view).percent).toFixed(1)}`).join(" ");
-    const aria = `Goal completion. Seven-day rolling average ${seven.percent} percent. Thirty-day rolling average ${thirty.percent} percent.`;
-    updateHTML($("am-chart-wrap"), `<svg class="am-chart" viewBox="0 0 612 182" role="img" aria-label="${aria}">${[0, 50, 100].map(n => `<line x1="36" x2="588" y1="${y(n)}" y2="${y(n)}" class="am-chart-grid"/><text x="27" y="${y(n) + 4}" text-anchor="end" class="am-chart-axis">${n}%</text>`).join("")}<path d="${points(30)}" class="am-chart-line am-chart-line-thirty"/><path d="${points(7)}" class="am-chart-line am-chart-line-seven"/><circle cx="${x(dates.length - 1)}" cy="${y(seven.percent)}" r="4" class="am-chart-dot"/><text x="36" y="176" class="am-chart-axis">${formatDate(from)}</text><text x="588" y="176" text-anchor="end" class="am-chart-axis">Today</text></svg>`);
+    const aria = `Goal completion. Daily completion ${daily.percent} percent. Seven-day rolling average ${seven.percent} percent. Thirty-day rolling average ${thirty.percent} percent.`;
+    updateHTML($("am-chart-wrap"), `<svg class="am-chart" viewBox="0 0 612 182" role="img" aria-label="${aria}">${[0, 50, 100].map(n => `<line x1="36" x2="588" y1="${y(n)}" y2="${y(n)}" class="am-chart-grid"/><text x="27" y="${y(n) + 4}" text-anchor="end" class="am-chart-axis">${n}%</text>`).join("")}<path d="${points(1)}" class="am-chart-line am-chart-line-daily"/><path d="${points(7)}" class="am-chart-line am-chart-line-seven"/><path d="${points(30)}" class="am-chart-line am-chart-line-thirty"/><circle cx="${x(dates.length - 1)}" cy="${y(daily.percent)}" r="4" class="am-chart-dot"/><text x="36" y="176" class="am-chart-axis">${formatDate(from)}</text><text x="588" y="176" text-anchor="end" class="am-chart-axis">Today</text></svg>`);
   }
 
   function renderWishes(slice, view) {
