@@ -1,5 +1,5 @@
-const CACHE_NAME = "discipline-os-cache-v32";
-const APP_ASSETS = ["./", "./index.html", "./styles.css?v=20261017g", "./cloud-config.js?v=20260214", "./app.js?v=20261017g", "./manifest.webmanifest", "./amulet.css?v=20261017g", "./amulet.js?v=20261017g"];
+const CACHE_NAME = "discipline-os-cache-v33";
+const APP_ASSETS = ["./", "./index.html", "./styles.css?v=20261017g", "./cloud-config.js?v=20260214", "./app.js?v=20261017g", "./manifest.webmanifest?v=20261017h", "./apple-touch-icon.png?v=20261017h", "./icons/amulet.svg", "./icons/amulet-192.png", "./icons/amulet-512.png", "./amulet.css?v=20261017g", "./amulet.js?v=20261017g"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

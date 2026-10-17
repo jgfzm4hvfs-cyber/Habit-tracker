@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Amulet</title>
+  <rect width="512" height="512" fill="#D6C2EE"/>
+  <g transform="translate(64 64) scale(16)" stroke="#49365F" stroke-width="1.35" stroke-linejoin="round" stroke-linecap="round">
+    <path d="m12 2 8 6-3 11-5 3-5-3L4 8Z" fill="#DFCEF3"/>
+    <path d="m12 2 3 7-3 8-3-8Z" fill="#BFA0DF"/>
+    <path d="m4 8 5 1m6 0 5-1m-8 9v5" fill="none"/>
+  </g>
+</svg>
