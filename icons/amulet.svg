@@ -1,9 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <title>Amulet</title>
-  <rect width="512" height="512" fill="#D6C2EE"/>
-  <g stroke="#49365F" stroke-linejoin="round">
-    <rect x="230" y="82" width="52" height="74" rx="26" fill="#BFA0DF" stroke-width="18"/>
-    <circle cx="256" cy="284" r="146" fill="#DFCEF3" stroke-width="20"/>
-    <path d="M256 204C264 257 283 276 336 284C283 292 264 311 256 364C248 311 229 292 176 284C229 276 248 257 256 204Z" fill="#BFA0DF" stroke-width="12"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><title>Amethyst double-point-faceted</title><rect width="512" height="512" fill="#D6C2EE"/><path d="M256 94L354 170V342L256 418L158 342V170Z" fill="#BFA0DF"/><path d="M256 94L158 170L204 196ZM256 94L354 170L308 196ZM204 196H308V316H204ZM158 342L204 316L256 418ZM354 342L308 316L256 418Z" fill="#DFCEF3"/><path d="M256 94L204 196H308L256 94M158 170L204 196V316L158 342M354 170L308 196V316L354 342M256 418L204 316H308L256 418" fill="none" stroke="#49365F" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/><path d="M256 94L354 170V342L256 418L158 342V170Z" fill="none" stroke="#49365F" stroke-width="19" stroke-linecap="round" stroke-linejoin="round"/></svg>

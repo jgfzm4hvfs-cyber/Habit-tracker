@@ -9,13 +9,13 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "./icons/amulet-192.png?v=20261017i",
+      "src": "./icons/amulet-192.png?v=20261017k",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./icons/amulet-512.png?v=20261017i",
+      "src": "./icons/amulet-512.png?v=20261017k",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
