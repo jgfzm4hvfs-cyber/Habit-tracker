@@ -317,7 +317,7 @@
         $(wishView === "wishlist" ? "am-wishlist-tab" : "am-purchases-tab").focus();
       }
     });
-    render();
+    if (!host.root.hidden) render();
   }
 
   function render() {

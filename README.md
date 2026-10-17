@@ -63,6 +63,12 @@ Run the money/history and sync regression checks with Node (no dependencies need
 ```bash
 TZ=Europe/Oslo node tests/amulet-model.cjs
 TZ=Europe/Oslo node tests/sync.cjs
+node tests/startup.cjs
+node tests/service-worker.cjs
 ```
 
 The checks use isolated in-memory data and never contact your Google Sheet. Phone layouts were also checked at 320, 393 and 402 pixels wide, with desktop at 1280 pixels.
+
+## Startup
+
+The app shows its saved state immediately and syncs with Google Sheets in the background. Only the visible tracker is rendered; other trackers render when opened. The service worker returns cached cloud configuration immediately while refreshing it for the next visit. Pending local edits stay protected during background sync. The first visit on a new device still needs to download the app.

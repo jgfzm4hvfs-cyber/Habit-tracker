@@ -6,8 +6,6 @@
   const CLOUD_PULL_INTERVAL_MS = 45000;
   const CLOUD_PUSH_RETRY_MS = 1400;
   const CLOUD_PUSH_ERROR_RETRY_MS = 15000;
-  const BOOT_SYNC_MAX_WAIT_MS = 8000;
-  const BOOT_SYNC_MIN_VISIBLE_MS = 450;
   const LOCAL_STATE_KEY = "discipline_os_state_v2";
   const LOCAL_PENDING_KEY = "discipline_os_pending_v1";
   const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -355,8 +353,6 @@
     googleSignInButton: byId("googleSignInButton"),
     signOutBtn: byId("signOutBtn"),
 
-    bootOverlay: byId("bootOverlay"),
-    bootOverlayText: byId("bootOverlayText"),
     toast: byId("toast"),
 
     progressTop: byId("progressTop"),
@@ -516,43 +512,11 @@
 
   function initialize() {
     bindEvents();
-    initializeGoogleAuth();
-
-    const shouldBootFromCloud = canUseCloudSync();
-    if (shouldBootFromCloud) {
-      setBootOverlay(true, "Loading your latest habits...");
-      persistState({ skipCloud: true, silent: true });
-      const bootStartedAt = Date.now();
-
-      let finished = false;
-      const finishBoot = () => {
-        if (finished) {
-          return;
-        }
-        finished = true;
-        const elapsed = Date.now() - bootStartedAt;
-        const waitMs = Math.max(0, BOOT_SYNC_MIN_VISIBLE_MS - elapsed);
-        window.setTimeout(() => {
-          setBootOverlay(false);
-          renderAll();
-        }, waitMs);
-      };
-
-      const timeoutId = window.setTimeout(() => {
-        finishBoot();
-      }, BOOT_SYNC_MAX_WAIT_MS);
-
-      initializeCloudSync().finally(() => {
-        window.clearTimeout(timeoutId);
-        finishBoot();
-      });
-      return;
-    }
-
-    setBootOverlay(false);
+    // Show the saved state before authentication or any network requests.
     renderAll();
     persistState({ skipCloud: true, silent: true });
-    initializeCloudSync();
+    initializeGoogleAuth();
+    void initializeCloudSync();
   }
 
   function bindEvents() {
@@ -587,7 +551,7 @@
         }
         persistState();
         renderTopTabs();
-        window.Amulet.render();
+        renderActiveTopTab();
       });
     });
     document.querySelector(".top-tab-switch").addEventListener("keydown", (event) => {
@@ -606,7 +570,7 @@
       if (!document.hidden) renderAll();
     });
     window.setInterval(() => {
-      if (!document.hidden) window.Amulet.render();
+      if (!document.hidden && state.activeTopTab === "amulet") window.Amulet.render();
     }, 60000);
     // Scroll-aware top bar (glass gets more opaque on scroll).
     const topBar = document.querySelector(".top-bar");
@@ -950,17 +914,25 @@
   }
 
   function renderAll() {
-    renderProgressTop();
     renderHeader();
-    renderTodayPanel();
-    renderHabitEditor();
-    renderMainContent();
     renderSyncPanel();
     renderSignInBanner();
     renderTopTabs();
-    renderExerciseDashboard();
-    renderCaffeineDashboard();
-    window.Amulet.render();
+    renderActiveTopTab();
+    if (refs.sidebarDrawer && !refs.sidebarDrawer.hidden) {
+      renderTodayPanel();
+      renderHabitEditor();
+    }
+  }
+
+  function renderActiveTopTab() {
+    if (state.activeTopTab === "exercise") renderExerciseDashboard();
+    else if (state.activeTopTab === "caffeine") renderCaffeineDashboard();
+    else if (state.activeTopTab === "amulet") window.Amulet.render();
+    else {
+      renderProgressTop();
+      renderMainContent();
+    }
   }
 
   function openSidebar() {
@@ -2222,7 +2194,7 @@
 
     cloudRuntime.inFlight = true;
     updateSyncStatus("syncing", "Pulling...");
-    renderAll();
+    renderSyncPanel();
 
     try {
       const response = await requestCloudApi("sync");
@@ -2294,7 +2266,6 @@
 
       cloudRuntime.hasLocalChanges = false;
       persistState({ skipCloud: true, silent: true });
-      renderAll();
       updateSyncStatus("synced", "Pulled from cloud");
       cloudRuntime.lastPullReason = "pulled";
       return true;
@@ -2327,7 +2298,7 @@
 
     cloudRuntime.inFlight = true;
     updateSyncStatus("syncing", reason === "manual" ? "Pushing..." : "Syncing...");
-    renderAll();
+    renderSyncPanel();
 
     const uploadedRevision = cloudRuntime.changeRevision;
     try {
@@ -2851,28 +2822,6 @@
 
     // Keep the sign-in banner in sync with auth state.
     renderSignInBanner();
-  }
-
-  function setBootOverlay(isVisible, message) {
-    if (!refs.bootOverlay) {
-      return;
-    }
-
-    if (refs.bootOverlayText && message) {
-      refs.bootOverlayText.textContent = message;
-    }
-
-    if (isVisible) {
-      refs.bootOverlay.hidden = false;
-      refs.bootOverlay.classList.remove("hiding");
-    } else {
-      refs.bootOverlay.classList.add("hiding");
-      window.setTimeout(() => {
-        if (refs.bootOverlay.classList.contains("hiding")) {
-          refs.bootOverlay.hidden = true;
-        }
-      }, 260);
-    }
   }
 
   function showToast(message) {
@@ -3711,9 +3660,7 @@
     state.activeTopTab = next;
     persistState({ skipCloud: true });
     renderTopTabs();
-    if (next === "exercise") renderExerciseDashboard();
-    else if (next === "caffeine") renderCaffeineDashboard();
-    else if (next === "amulet") window.Amulet.render();
+    renderActiveTopTab();
     window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }
 

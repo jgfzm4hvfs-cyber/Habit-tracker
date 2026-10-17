@@ -1,5 +1,5 @@
-const CACHE_NAME = "discipline-os-cache-v30";
-const APP_ASSETS = ["./", "./index.html", "./styles.css?v=20261017e", "./cloud-config.js?v=20260214", "./app.js?v=20261017e", "./manifest.webmanifest", "./amulet.css?v=20261017e", "./amulet.js?v=20261017e"];
+const CACHE_NAME = "discipline-os-cache-v31";
+const APP_ASSETS = ["./", "./index.html", "./styles.css?v=20261017f", "./cloud-config.js?v=20260214", "./app.js?v=20261017f", "./manifest.webmanifest", "./amulet.css?v=20261017f", "./amulet.js?v=20261017f"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -33,14 +33,21 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.pathname.endsWith("/cloud-config.js")) {
+    // Start from the cached configuration; refresh it for the next visit.
+    // A slow or unavailable network must not block the app's startup scripts.
+    const refresh = fetch(request)
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(request, response.clone());
+        return response;
+      })
+      .catch(() => null);
+    event.waitUntil(refresh.then(() => undefined));
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match("./index.html"))),
+      caches.match(request).then((cached) =>
+        cached || refresh.then((response) => response || Response.error()),
+      ),
     );
     return;
   }
