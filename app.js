@@ -280,6 +280,10 @@
   let progressRangeDays = 7;
   let hasRenderedProgressChart = false;
   let hasRenderedHeatmap = false;
+  let hasPositionedHeatmap = false;
+  let habitEditorSignature = "";
+  let renderedCalendarDay = todayKey();
+  const googleAuthRuntime = { initialized: false, pending: null, error: "" };
 
   const refs = {
     todayLabel: byId("todayLabel"),
@@ -351,6 +355,12 @@
     syncLastText: byId("syncLastText"),
     authStatusText: byId("authStatusText"),
     googleSignInButton: byId("googleSignInButton"),
+    googleSignInBannerButton: byId("googleSignInBannerButton"),
+    googleSignInError: byId("googleSignInError"),
+    drawerAccount: byId("drawerAccount"),
+    habitManagerModal: byId("habitManagerModal"),
+    openHabitManagerBtn: byId("openHabitManagerBtn"),
+    closeHabitManagerBtn: byId("closeHabitManagerBtn"),
     signOutBtn: byId("signOutBtn"),
 
     toast: byId("toast"),
@@ -570,7 +580,9 @@
       if (!document.hidden) renderAll();
     });
     window.setInterval(() => {
-      if (!document.hidden && state.activeTopTab === "amulet") window.Amulet.render();
+      if (document.hidden) return;
+      if (refreshCalendarDay()) renderAll();
+      else if (state.activeTopTab === "amulet") window.Amulet.render();
     }, 60000);
     // Scroll-aware top bar (glass gets more opaque on scroll).
     const topBar = document.querySelector(".top-bar");
@@ -598,20 +610,21 @@
       }
     });
 
+    refs.openHabitManagerBtn?.addEventListener("click", () => {
+      closeSidebar();
+      renderHabitEditor();
+      refs.habitManagerModal?.showModal();
+    });
+    refs.closeHabitManagerBtn?.addEventListener("click", () => refs.habitManagerModal?.close());
+
+    [refs.exMealDateInput, refs.exWorkoutDateInput, refs.exWeightDateInput, refs.cafDateInput].filter(Boolean).forEach((input) => {
+      input.addEventListener("change", () => rememberDateSelection(input));
+    });
+    bindDialogSaveForms();
+
     // Sign-in banner actions
     if (refs.signInBannerBtn) {
-      refs.signInBannerBtn.addEventListener("click", () => {
-        if (window.google && window.google.accounts && window.google.accounts.id) {
-          try {
-            window.google.accounts.id.prompt();
-          } catch (e) {
-            // If FedCM prompt fails, open drawer where the Google button lives.
-            openSidebar();
-          }
-        } else {
-          openSidebar();
-        }
-      });
+      refs.signInBannerBtn.addEventListener("click", openGoogleSignIn);
     }
     if (refs.dismissSignInBannerBtn) {
       refs.dismissSignInBannerBtn.addEventListener("click", () => {
@@ -678,9 +691,7 @@
     }
 
     refs.newHabitName.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") {
-        return;
-      }
+      if (!isPlainEnter(event)) return;
       event.preventDefault();
       addHabitFromInputs();
     });
@@ -825,7 +836,8 @@
       }
 
       toggleCompletion(habitId, dateKey);
-      renderDayDetails(dateKey);
+      renderDayDetails(dateKey, { preserveNote: true });
+      animateHabitToggle(habitId, dateKey);
     });
 
     refs.saveDayDetailsBtn.addEventListener("click", () => {
@@ -913,14 +925,54 @@
     });
   }
 
+  function bindDialogSaveForms() {
+    // Native Enter/Done saves through the same handler as the visible Save
+    // button, rather than method=dialog closing with an unsaved draft.
+    const dialogSaves = {
+      dayDetailsForm: refs.saveDayDetailsBtn,
+      exMealEditForm: refs.exSaveMealEditBtn,
+      exWorkoutEditForm: refs.exSaveWorkoutEditBtn,
+      exGoalsForm: refs.exSaveGoalsBtn,
+      cafGoalForm: refs.cafSaveGoalBtn,
+      syncForm: refs.saveSyncBtn,
+      exDayWorkoutsForm: null,
+      habitManagerForm: null,
+    };
+    Object.entries(dialogSaves).forEach(([id, button]) => {
+      const form = byId(id);
+      if (!form) return;
+      const save = (target) => {
+        const row = id === "habitManagerForm" ? target?.closest?.("[data-habit-id]") : null;
+        const creator = id === "habitManagerForm" ? target?.closest?.(".habit-create") : null;
+        const action = button || row?.querySelector('[data-action="save-habit"]') || (creator ? refs.addHabitBtn : null);
+        const scope = row || creator || form;
+        if (action && validateInputs(...scope.querySelectorAll("input"))) action.click();
+      };
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        save(document.activeElement);
+      });
+      form.addEventListener("keydown", (event) => {
+        // With several inputs and type=button Save controls, browsers do not
+        // produce an implicit submit. Route single-line Enter explicitly.
+        if (event.defaultPrevented || !isPlainEnter(event)) return;
+        const input = event.target;
+        if (input?.tagName !== "INPUT" || !["text", "number", "email", "url", "search", "tel", "password"].includes(input.type || "text")) return;
+        event.preventDefault();
+        if (!event.repeat) save(input);
+      });
+    });
+  }
+
   function renderAll() {
+    refreshCalendarDay();
     renderHeader();
     renderSyncPanel();
     renderSignInBanner();
     renderTopTabs();
     renderActiveTopTab();
-    if (refs.sidebarDrawer && !refs.sidebarDrawer.hidden) {
-      renderTodayPanel();
+    if (refs.sidebarDrawer && !refs.sidebarDrawer.hidden) renderTodayPanel();
+    if (refs.habitManagerModal?.open || (!refs.habitManagerModal && refs.sidebarDrawer && !refs.sidebarDrawer.hidden)) {
       renderHabitEditor();
     }
   }
@@ -945,7 +997,7 @@
     }
     // Re-render the drawer contents so they're current.
     renderTodayPanel();
-    renderHabitEditor();
+    if (!refs.habitManagerModal) renderHabitEditor();
     renderAuthIndicators();
     renderGoogleSignInButton();
     document.body.classList.add("drawer-open");
@@ -976,7 +1028,7 @@
 
   function isSignInBannerDismissedToday_() {
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayKey();
       return (
         window.localStorage &&
         window.localStorage.getItem("discipline_os_dismissed_signin_banner") === today
@@ -989,7 +1041,7 @@
   function dismissSignInBannerForToday_() {
     try {
       if (!window.localStorage) return;
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayKey();
       window.localStorage.setItem("discipline_os_dismissed_signin_banner", today);
     } catch (e) {
       // ignore
@@ -1008,7 +1060,7 @@
         '<p class="month-empty">Add a habit to see your progress.</p>';
       if (refs.progressTopSubheading) {
         refs.progressTopSubheading.textContent =
-          "Rolling 7-day and 30-day completion. 100% = weekly goal hit.";
+          "Completion by habit";
       }
       refs.progressRangeButtons.forEach((b) => (b.style.display = "none"));
       return;
@@ -1127,7 +1179,7 @@
 
     if (refs.progressTopSubheading) {
       refs.progressTopSubheading.textContent =
-        "Rolling 7-day and 30-day completion. 100% = weekly goal hit.";
+        "Completion by habit";
     }
   }
 
@@ -1219,7 +1271,7 @@
     row.className = `today-item${isScheduled ? "" : " offday"}`;
     row.style.setProperty("--habit-color", habit.color);
     row.innerHTML = `
-      <button type="button" data-action="noop">
+      <button type="button" data-action="toggle" data-habit-id="${escapeHtmlAttr(habit.id)}" aria-pressed="${isDone}">
         <span>${habit.icon}</span>
         <span>${escapeHtml(habit.name)}</span>
       </button>
@@ -1229,6 +1281,8 @@
         data-action="toggle"
         data-habit-id="${habit.id}"
         title="${isDone ? "Undo" : "Mark done"}"
+        aria-label="${isDone ? "Undo" : "Complete"} ${escapeHtmlAttr(habit.name)}"
+        aria-pressed="${isDone}"
       >✓</button>
     `;
     return row;
@@ -1241,6 +1295,25 @@
   }
 
   function renderHabitEditor() {
+    if (!refs.habitEditorList) return;
+    const signature = JSON.stringify(getActiveHabits());
+    // Ordinary sync/status redraws must not replace focused inputs or drafts.
+    if (signature === habitEditorSignature && refs.habitEditorList.childElementCount) return;
+    const drafts = new Map();
+    const focused = document.activeElement;
+    const focusRow = focused?.closest?.("[data-habit-id]");
+    const focusId = refs.habitEditorList.contains(focused) ? focusRow?.dataset.habitId : "";
+    const focusField = focusId ? focused.dataset.field : "";
+    const selection = focusField && typeof focused.selectionStart === "number"
+      ? [focused.selectionStart, focused.selectionEnd] : null;
+    refs.habitEditorList.querySelectorAll("[data-habit-id]").forEach((row) => {
+      const saved = JSON.parse(row.dataset.savedFields || "{}");
+      const dirty = {};
+      row.querySelectorAll("[data-field]").forEach((input) => {
+        if (input.value !== saved[input.dataset.field]) dirty[input.dataset.field] = input.value;
+      });
+      if (Object.keys(dirty).length) drafts.set(row.dataset.habitId, dirty);
+    });
     const fragment = document.createDocumentFragment();
     const cornerstoneHabits = getHabitsByType(HABIT_TYPE_CORNERSTONE);
     const regularHabits = getHabitsByType(HABIT_TYPE_REGULAR);
@@ -1256,6 +1329,23 @@
     }
 
     refs.habitEditorList.replaceChildren(fragment);
+    habitEditorSignature = signature;
+    refs.habitEditorList.querySelectorAll("[data-habit-id]").forEach((row) => {
+      const draft = drafts.get(row.dataset.habitId);
+      if (!draft) return;
+      row.querySelectorAll("[data-field]").forEach((input) => {
+        if (Object.hasOwn(draft, input.dataset.field)) input.value = draft[input.dataset.field];
+      });
+      const type = row.querySelector('[data-field="type"]');
+      const target = row.querySelector('[data-field="targetPerWeek"]');
+      if (target) target.disabled = type?.value === HABIT_TYPE_CORNERSTONE;
+    });
+    if (focusId && focusField) {
+      const row = [...refs.habitEditorList.querySelectorAll("[data-habit-id]")].find((item) => item.dataset.habitId === focusId);
+      const input = row?.querySelector(`[data-field="${focusField}"]`);
+      input?.focus({ preventScroll: true });
+      if (selection && input?.setSelectionRange) input.setSelectionRange(...selection);
+    }
   }
 
   function renderHabitEditorGroup(title, habits) {
@@ -1282,13 +1372,16 @@
       row.dataset.habitId = habit.id;
       const isCornerstone = habit.type === HABIT_TYPE_CORNERSTONE;
       row.innerHTML = `
+        <div class="habit-editor-heading">
         <input class="habit-editor-emoji" data-field="icon" type="text" value="${escapeHtmlAttr(habit.icon)}" maxlength="4" />
         <input class="habit-editor-name" data-field="name" type="text" value="${escapeHtmlAttr(habit.name)}" />
-        <select data-field="type" class="habit-editor-type">
+        </div>
+        <div class="habit-editor-options">
+        <label>Type<select data-field="type" class="habit-editor-type">
           <option value="${HABIT_TYPE_CORNERSTONE}"${isCornerstone ? " selected" : ""}>Cornerstone</option>
           <option value="${HABIT_TYPE_REGULAR}"${isCornerstone ? "" : " selected"}>Regular</option>
-        </select>
-        <input
+        </select></label>
+        <label>Days / week<input
           class="habit-editor-target"
           data-field="targetPerWeek"
           type="number"
@@ -1297,10 +1390,16 @@
           value="${isCornerstone ? "7" : String(habit.targetPerWeek || 3)}"
           ${isCornerstone ? "disabled" : ""}
           title="Days per week"
-        />
-        <button type="button" class="btn secondary" data-action="save-habit">Save</button>
-        <button type="button" class="btn ghost" data-action="delete-habit">Delete</button>
+        /></label>
+        </div>
+        <div class="habit-editor-actions">
+          <button type="button" class="btn secondary" data-action="save-habit">Save</button>
+          <button type="button" class="btn ghost" data-action="delete-habit">Delete</button>
+        </div>
       `;
+      const saved = {};
+      row.querySelectorAll("[data-field]").forEach((input) => { saved[input.dataset.field] = input.value; });
+      row.dataset.savedFields = JSON.stringify(saved);
       section.appendChild(row);
     });
 
@@ -1329,6 +1428,10 @@
   }
 
   function renderViewMode() {
+    const heatmap = state.viewMode === "heatmap";
+    [refs.prevPeriodBtn, refs.todayBtn, refs.nextPeriodBtn].filter(Boolean).forEach((button) => { button.hidden = heatmap; });
+    const toolbar = refs.periodLabel?.closest(".toolbar");
+    if (toolbar) toolbar.dataset.viewMode = state.viewMode;
     refs.viewButtons.forEach((button) => {
       button.classList.toggle("active", button.dataset.viewMode === state.viewMode);
     });
@@ -1403,6 +1506,8 @@
         button.style.setProperty("--habit-color", habit.color);
         button.textContent = done ? "✓" : "✓";
         button.title = `${habit.name} • ${formatDateReadable(date)}`;
+        button.setAttribute("aria-label", `${done ? "Undo" : "Complete"} ${habit.name}, ${formatDateReadable(date)}`);
+        button.setAttribute("aria-pressed", String(done));
         td.appendChild(button);
         row.appendChild(td);
       });
@@ -1448,7 +1553,7 @@
     refs.dayDetailsModal.showModal();
   }
 
-  function renderDayDetails(dateKey) {
+  function renderDayDetails(dateKey, { preserveNote = false } = {}) {
     const date = fromDateKey(dateKey);
     if (!date) {
       return;
@@ -1456,10 +1561,10 @@
 
     const totals = getDayTotals(date);
     refs.dayDetailsTitle.textContent = formatDateWithWeekday(date);
-    refs.dayDetailsSummary.textContent = `${totals.completed}/${totals.scheduled} habits completed`;
+    refs.dayDetailsSummary.textContent = `${totals.completed}/${totals.scheduled} scheduled habits completed`;
     renderSegmentTrack(refs.dayDetailsTrack, totals.rate);
     refs.dayDetailsRate.textContent = `${Math.round(totals.rate * 100)}%`;
-    refs.dayDetailsNoteInput.value = state.dayNotes[dateKey] || "";
+    if (!preserveNote) refs.dayDetailsNoteInput.value = state.dayNotes[dateKey] || "";
 
     const habits = getActiveHabits();
     const fragment = document.createDocumentFragment();
@@ -1470,12 +1575,14 @@
       row.className = `day-detail-habit-row${scheduled ? "" : " offday"}`;
       row.style.setProperty("--habit-color", habit.color);
       row.innerHTML = `
-        <span>${habit.icon} ${escapeHtml(habit.name)}</span>
+        <span>${habit.icon} ${escapeHtml(habit.name)}${scheduled ? "" : ' <small class="day-habit-optional">Optional</small>'}</span>
         <button
           type="button"
           class="mark-btn ${done ? "done" : ""}"
           data-action="toggle-day-detail-habit"
-          data-habit-id="${habit.id}"
+          aria-label="${done ? "Undo" : "Complete"} ${escapeHtmlAttr(habit.name)}"
+          aria-pressed="${done}"
+          data-habit-id="${escapeHtmlAttr(habit.id)}"
           data-date-key="${dateKey}"
           title="${done ? "Undo" : "Mark done"}"
         >✓</button>
@@ -1713,6 +1820,18 @@
         </div>
       </div>
     `;
+    positionHeatmapOnce();
+  }
+
+  function positionHeatmapOnce() {
+    if (hasPositionedHeatmap || !isCompactViewport()) return;
+    const scroller = refs.heatmapView?.querySelector(".heatmap-scroll");
+    if (!scroller) return;
+    window.requestAnimationFrame(() => {
+      if (hasPositionedHeatmap || state.viewMode !== "heatmap" || state.activeTopTab !== "habits") return;
+      scroller.scrollLeft = scroller.scrollWidth;
+      hasPositionedHeatmap = true;
+    });
   }
 
   function renderSyncPanel() {
@@ -1754,9 +1873,19 @@
 
     persistState();
     renderAll();
+    animateHabitToggle(habitId, dateKey);
+  }
+
+  function animateHabitToggle(habitId, dateKey) {
+    document.querySelectorAll("button[data-habit-id]").forEach((button) => {
+      if (button.dataset.habitId !== habitId || (button.dataset.dateKey || todayKey()) !== dateKey) return;
+      button.classList.add("is-toggled");
+      button.addEventListener("animationend", () => button.classList.remove("is-toggled"), { once: true });
+    });
   }
 
   function addHabitFromInputs() {
+    if (!validateInputs(refs.newHabitTarget)) return;
     const name = sanitizeHabitName(refs.newHabitName.value);
     const icon = sanitizeHabitIcon(refs.newHabitEmoji.value);
     const type = normalizeHabitType(refs.newHabitType?.value);
@@ -1808,6 +1937,7 @@
     const typeInput = row.querySelector("[data-field='type']");
     const targetInput = row.querySelector("[data-field='targetPerWeek']");
 
+    if (!validateInputs(targetInput)) return;
     const nextName = sanitizeHabitName(nameInput?.value);
     const nextIcon = sanitizeHabitIcon(iconInput?.value);
     const nextType = normalizeHabitType(typeInput?.value);
@@ -1838,6 +1968,10 @@
         : normalizeDays(prevHabit.scheduledDays),
     };
 
+    // This row is now saved; retain drafts in the other editor rows only.
+    const saved = {};
+    row.querySelectorAll("[data-field]").forEach((input) => { saved[input.dataset.field] = input.value; });
+    row.dataset.savedFields = JSON.stringify(saved);
     persistState();
     renderAll();
     renderHabitEditor();
@@ -2639,83 +2773,130 @@
     }
   }
 
-  function initializeGoogleAuth() {
+  function googleIdentity() {
+    return window.google?.accounts?.id || null;
+  }
+
+  function setGoogleSignInError(message) {
+    googleAuthRuntime.error = message;
+    if (refs.googleSignInError) {
+      refs.googleSignInError.textContent = message;
+      refs.googleSignInError.hidden = !message;
+    }
+  }
+
+  function openGoogleSignIn() {
+    openSidebar();
+    (refs.drawerAccount || refs.googleSignInButton)?.scrollIntoView?.({
+      block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+    void initializeGoogleAuth({ retry: true });
+  }
+
+  function initializeGoogleAuth({ retry = false } = {}) {
     renderAuthIndicators();
     if (!AUTH_CONFIG.googleClientId) {
-      return;
+      // The Account status already explains missing configuration.
+      setGoogleSignInError("");
+      return Promise.resolve(false);
     }
-
-    waitForGoogleIdentity(8000).then((ready) => {
-      if (!ready || !window.google || !window.google.accounts || !window.google.accounts.id) {
-        return;
-      }
-
-      window.google.accounts.id.initialize({
+    if (googleAuthRuntime.initialized && googleIdentity()) {
+      renderGoogleSignInButton();
+      return Promise.resolve(true);
+    }
+    if (googleAuthRuntime.pending) return googleAuthRuntime.pending;
+    setGoogleSignInError("");
+    if (retry && !googleIdentity()) {
+      // A blocked/failed first script load must be retryable without reloading data.
+      document.querySelectorAll('script[src^="https://accounts.google.com/gsi/client"]').forEach((script) => script.remove());
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      document.head.appendChild(script);
+    }
+    googleAuthRuntime.pending = waitForGoogleIdentity(8000).then((ready) => {
+      if (!ready) throw new Error("google_unavailable");
+      const identity = googleIdentity();
+      identity.initialize({
         client_id: AUTH_CONFIG.googleClientId,
         callback: handleGoogleCredential,
+        ux_mode: "popup",
         auto_select: true,
         itp_support: true,
-        use_fedcm_for_prompt: true,
       });
+      googleAuthRuntime.initialized = true;
       renderGoogleSignInButton();
-
-      // Only show Google's One Tap popup if we don't already have a working
-      // login. With a valid session token (90-day) or fresh ID token (1-hour),
-      // there's no reason to prompt — the user is already authenticated.
-      const idTokenValid =
-        Boolean(state.auth?.idToken) && !isJwtExpired(state.auth.idToken, 45);
-      const alreadyAuthenticated = hasValidSessionToken_() || idTokenValid;
-      if (!alreadyAuthenticated) {
-        window.google.accounts.id.prompt();
+      // One Tap is an optional automatic convenience, never a click handler.
+      if (!hasValidSessionToken_() && (!state.auth?.idToken || isJwtExpired(state.auth.idToken, 45))) {
+        try { identity.prompt(); } catch (_) { /* The actual Google button remains available. */ }
       }
-    });
+      return true;
+    }).catch(() => {
+      setGoogleSignInError("Google sign-in couldn't load. Check your connection and try again.");
+      renderGoogleSignInButton();
+      return false;
+    }).finally(() => { googleAuthRuntime.pending = null; });
+    renderGoogleSignInButton();
+    return googleAuthRuntime.pending;
   }
 
   function waitForGoogleIdentity(timeoutMs) {
+    if (googleIdentity()) return Promise.resolve(true);
     return new Promise((resolve) => {
       const started = Date.now();
       const timer = window.setInterval(() => {
-        if (window.google && window.google.accounts && window.google.accounts.id) {
+        if (googleIdentity() || Date.now() - started >= timeoutMs) {
           window.clearInterval(timer);
-          resolve(true);
-          return;
-        }
-        if (Date.now() - started > timeoutMs) {
-          window.clearInterval(timer);
-          resolve(false);
+          resolve(Boolean(googleIdentity()));
         }
       }, 120);
     });
   }
 
   function renderGoogleSignInButton() {
-    if (!refs.googleSignInButton) {
-      return;
-    }
-    if (!AUTH_CONFIG.googleClientId) {
-      refs.googleSignInButton.replaceChildren();
-      return;
-    }
-    if (!window.google || !window.google.accounts || !window.google.accounts.id) {
-      return;
-    }
-    refs.googleSignInButton.replaceChildren();
-    window.google.accounts.id.renderButton(refs.googleSignInButton, {
-      theme: "outline",
-      size: "large",
-      width: 280,
-      text: "signin_with",
+    const signedIn = hasValidSessionToken_() || (Boolean(state.auth?.idToken) && !isJwtExpired(state.auth.idToken, 45));
+    let bannerReady = false;
+    [refs.googleSignInButton, refs.googleSignInBannerButton].filter(Boolean).forEach((container) => {
+      container.hidden = signedIn;
+      if (signedIn || !AUTH_CONFIG.googleClientId) return;
+      if (googleAuthRuntime.initialized && googleIdentity()) {
+        if (container.dataset.googleReady !== "1") {
+          try {
+            container.replaceChildren();
+            googleIdentity().renderButton(container, {
+              theme: "outline", size: "large", width: Math.max(200, Math.min(320, container.clientWidth || Math.min(280, (window.innerWidth || 400) - 96))),
+              text: "signin_with",
+            });
+            container.dataset.googleReady = "1";
+          } catch (_) {
+            setGoogleSignInError("Google sign-in isn't available yet. Please try again.");
+          }
+        }
+      }
+      if (container.dataset.googleReady !== "1" && !container.querySelector("[data-google-retry]")) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn secondary";
+        button.dataset.googleRetry = "true";
+        button.textContent = googleAuthRuntime.error ? "Retry Google sign-in" : "Load Google sign-in";
+        button.addEventListener("click", () => { void initializeGoogleAuth({ retry: true }); });
+        container.replaceChildren(button);
+      }
+      if (container === refs.googleSignInBannerButton) bannerReady = container.dataset.googleReady === "1";
     });
+    if (bannerReady && refs.googleSignInButton?.dataset.googleReady === "1") setGoogleSignInError("");
+    if (refs.signInBannerBtn) refs.signInBannerBtn.hidden = bannerReady;
   }
 
   function handleGoogleCredential(response) {
     const idToken = String(response?.credential || "");
-    if (!idToken) {
-      return;
-    }
-
     const payload = decodeJwtPayload(idToken);
     const email = String(payload?.email || "").toLowerCase();
+    if (!idToken || !email || isJwtExpired(idToken, 45)) {
+      setGoogleSignInError("Google sign-in didn't complete. Please try again.");
+      return;
+    }
+    setGoogleSignInError("");
     if (AUTH_CONFIG.allowedEmail && email !== AUTH_CONFIG.allowedEmail) {
       signOutGoogle();
       updateSyncStatus("error", "Wrong Google account");
@@ -2724,6 +2905,10 @@
       return;
     }
 
+    if (state.auth.idToken !== idToken) {
+      state.auth.sessionToken = "";
+      state.auth.sessionExpiresAt = "";
+    }
     state.auth.idToken = idToken;
     state.auth.email = email;
     state.auth.signedIn = true;
@@ -2743,6 +2928,7 @@
     if (!state.auth.idToken || !state.cloud.webAppUrl) {
       return;
     }
+    const exchangedIdToken = state.auth.idToken;
     try {
       const response = await fetch(state.cloud.webAppUrl, {
         method: "POST",
@@ -2755,7 +2941,7 @@
       });
       if (!response.ok) return;
       const data = await response.json();
-      if (data && data.ok && data.sessionToken) {
+      if (data && data.ok && data.sessionToken && state.auth.idToken === exchangedIdToken) {
         state.auth.sessionToken = String(data.sessionToken);
         state.auth.sessionExpiresAt = String(data.expiresAt || "");
         state.auth.signedIn = true;
@@ -2774,10 +2960,11 @@
     state.auth.email = "";
     state.auth.signedIn = false;
     if (window.google && window.google.accounts && window.google.accounts.id) {
-      window.google.accounts.id.disableAutoSelect();
+      try { window.google.accounts.id.disableAutoSelect(); } catch (_) { /* Local sign-out still succeeds. */ }
     }
     persistState({ skipCloud: true, silent: true });
     renderAuthIndicators();
+    renderGoogleSignInButton();
     updateSyncStatus("local", "Signed out");
     renderAll();
   }
@@ -2813,13 +3000,14 @@
     if (refs.authStatusText) {
       refs.authStatusText.textContent = AUTH_CONFIG.googleClientId
         ? text
-        : "Missing Google Client ID in cloud-config.js";
+        : "Google sign-in is not configured for this app.";
     }
 
     if (refs.signOutBtn) {
       refs.signOutBtn.disabled = !signedIn;
     }
 
+    [refs.googleSignInButton, refs.googleSignInBannerButton].filter(Boolean).forEach((container) => { container.hidden = signedIn; });
     // Keep the sign-in banner in sync with auth state.
     renderSignInBanner();
   }
@@ -3301,8 +3489,8 @@
       if (!isValidDateKey(dateKey)) return;
       const entry = rawWeights[dateKey];
       if (!entry || typeof entry !== "object") return;
-      const kg = clampNumber(Number(entry.kg), 20, 400);
-      if (!Number.isFinite(kg) || kg <= 0) return;
+      const kg = Number(entry.kg);
+      if (!Number.isFinite(kg) || kg < 20 || kg > 400) return;
       cleanWeights[dateKey] = {
         kg: roundTo(kg, 1),
         createdAt: String(entry.createdAt || new Date().toISOString()),
@@ -3387,7 +3575,22 @@
   }
 
   function isValidDateKey(value) {
-    return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+    const date = fromDateKey(value);
+    return typeof value === "string" && Boolean(date) && toDateKey(date) === value;
+  }
+
+  function entryDate(value, fallback = todayKey()) {
+    const date = value || fallback;
+    return isValidDateKey(date) && date <= todayKey() ? date : null;
+  }
+
+  function isPlainEnter(event) {
+    return event.key === "Enter" && !event.isComposing && event.keyCode !== 229
+      && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+  }
+
+  function validateInputs(...inputs) {
+    return inputs.filter(Boolean).every((input) => !input.reportValidity || input.reportValidity());
   }
 
   function roundTo(value, decimals) {
@@ -3411,7 +3614,8 @@
 
   function exAddMeal({ mealType, calories, protein, note, dateKey }) {
     const ex = state.exercise;
-    const date = isValidDateKey(dateKey) ? dateKey : todayKey();
+    const date = entryDate(dateKey);
+    if (!date) return null;
     const meal = normalizeMealEntry({
       mealType,
       calories,
@@ -3428,7 +3632,8 @@
 
   function exUpdateMeal(dateKey, mealId, patch) {
     const ex = state.exercise;
-    const targetDate = isValidDateKey(patch.dateKey) ? patch.dateKey : dateKey;
+    const targetDate = entryDate(patch.dateKey, dateKey);
+    if (!targetDate) return false;
     const list = ex.meals[dateKey] || [];
     const idx = list.findIndex((m) => m.id === mealId);
     if (idx < 0) return false;
@@ -3503,7 +3708,8 @@
 
   function exAddWorkout({ muscleGroups, exerciseId, weight, reps, dateKey }) {
     const ex = state.exercise;
-    const date = isValidDateKey(dateKey) ? dateKey : todayKey();
+    const date = entryDate(dateKey);
+    if (!date) return null;
     const validIds = new Set(ex.exercises.map((e) => e.id));
     const workout = normalizeWorkoutEntry(
       { muscleGroups, exerciseId, weight, reps, createdAt: new Date().toISOString() },
@@ -3518,7 +3724,8 @@
 
   function exUpdateWorkout(dateKey, workoutId, patch) {
     const ex = state.exercise;
-    const targetDate = isValidDateKey(patch.dateKey) ? patch.dateKey : dateKey;
+    const targetDate = entryDate(patch.dateKey, dateKey);
+    if (!targetDate) return false;
     const list = ex.workouts[dateKey] || [];
     const idx = list.findIndex((w) => w.id === workoutId);
     if (idx < 0) return false;
@@ -3560,7 +3767,9 @@
 
   function exAddWeight({ kg, dateKey }) {
     const ex = state.exercise;
-    const date = isValidDateKey(dateKey) ? dateKey : todayKey();
+    if (!Number.isFinite(Number(kg)) || Number(kg) < 20 || Number(kg) > 400) return null;
+    const date = entryDate(dateKey);
+    if (!date) return null;
     const value = clampNumber(roundTo(Number(kg) || 0, 1), 20, 400);
     if (!Number.isFinite(value) || value <= 0) return null;
     ex.weights[date] = { kg: value, createdAt: new Date().toISOString() };
@@ -3582,9 +3791,10 @@
 
   function cafAddEntry({ cups, dateKey }) {
     const caf = state.caffeine;
-    const date = isValidDateKey(dateKey) ? dateKey : todayKey();
+    const date = entryDate(dateKey);
+    if (!date) return null;
     const value = roundTo(Number(cups) || 0, 2);
-    if (!Number.isFinite(value) || value <= 0) return null;
+    if (!Number.isFinite(value) || value < 0.25 || value > CAFFEINE_MAX_CUPS_PER_DAY) return null;
     if (!caf.entries[date]) caf.entries[date] = [];
     caf.entries[date].push({
       id: `caf_${generateId()}`,
@@ -3661,7 +3871,7 @@
     persistState({ skipCloud: true });
     renderTopTabs();
     renderActiveTopTab();
-    window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    window.scrollTo({ top: 0, behavior: "instant" });
   }
 
   function renderTopTabs() {
@@ -3823,10 +4033,30 @@
     });
   }
 
+  function refreshCalendarDay() {
+    const today = todayKey();
+    if (today === renderedCalendarDay) return false;
+    if (toDateKey(weekCursor) === renderedCalendarDay) weekCursor = startOfDay(new Date());
+    const previous = fromDateKey(renderedCalendarDay);
+    if (previous && toDateKey(monthCursor) === toDateKey(startOfMonth(previous))) monthCursor = startOfMonth(new Date());
+    renderedCalendarDay = today;
+    [refs.exMealDateInput, refs.exWorkoutDateInput, refs.exWeightDateInput, refs.cafDateInput].forEach(setDateInputDefault);
+    return true;
+  }
+
+  function rememberDateSelection(input) {
+    input.dataset.defaultDate = input.value === todayKey() ? todayKey() : "";
+  }
+
   function setDateInputDefault(input) {
     if (!input) return;
-    if (!input.value) input.value = todayKey();
-    if (!input.max) input.max = todayKey();
+    const today = todayKey();
+    const previousDefault = input.dataset.defaultDate;
+    if (!input.value || (previousDefault && input.value === previousDefault)) {
+      input.value = today;
+      input.dataset.defaultDate = today;
+    }
+    input.max = today;
   }
 
   function renderExMealsList() {
@@ -4140,6 +4370,7 @@
         const moreBadge = extra > 0
           ? `<span class="ex-day-more-badge" title="${extra} more lift${extra === 1 ? "" : "s"} this day">+${extra}</span>`
           : "";
+        const hasPR = best.e1rm > 0;
         const clickAttr = list.length > 1
           ? `data-open-day-workouts="${escapeHtmlAttr(dKey)}"`
           : `data-edit-workout="${escapeHtmlAttr(dKey)}|${escapeHtmlAttr(best.id)}"`;
@@ -4149,9 +4380,7 @@
             ${moreBadge}
             <span class="ex-day-num">${dayNum}</span>
             <span class="ex-day-type" title="${escapeHtmlAttr(groupsLabel)}">${escapeHtml(groupsLabel)}</span>
-            <span class="ex-day-pr">${formatNumber(best.weight)}×${best.reps}</span>
-            <span class="ex-day-e1rm">${formatNumber(roundTo(best.e1rm, 0))}kg e1RM</span>
-            <span class="ex-day-exname">${escapeHtml(truncate(exName, 14))}</span>
+            ${hasPR ? `<span class="ex-day-pr">${formatNumber(best.weight)}×${best.reps}</span><span class="ex-day-e1rm">${formatNumber(roundTo(best.e1rm, 0))}kg e1RM</span><span class="ex-day-exname">${escapeHtml(truncate(exName, 14))}</span>` : '<span class="ex-day-pr">Session</span>'}
           </button>
         `;
       })
@@ -4193,6 +4422,15 @@
     }
   }
 
+  function countMuscleSessions(workouts, days) {
+    const counts = Object.fromEntries(MUSCLE_GROUPS.map((group) => [group, 0]));
+    days.forEach((date) => {
+      const trained = new Set((workouts[date] || []).flatMap((workout) => workout.muscleGroups || []));
+      trained.forEach((group) => { if (Object.hasOwn(counts, group)) counts[group] += 1; });
+    });
+    return counts;
+  }
+
   function renderExMuscleFrequency() {
     if (!refs.exMuscleFrequencyList) return;
     const ex = state.exercise;
@@ -4210,17 +4448,8 @@
 
     const days = lastNDateKeys(effectiveDays);
 
-    const counts = Object.fromEntries(MUSCLE_GROUPS.map((g) => [g, 0]));
-    let totalWorkouts = 0;
-    days.forEach((dKey) => {
-      const list = ex.workouts[dKey] || [];
-      totalWorkouts += list.length;
-      list.forEach((w) => {
-        (w.muscleGroups || []).forEach((g) => {
-          if (counts[g] !== undefined) counts[g] += 1;
-        });
-      });
-    });
+    const counts = countMuscleSessions(ex.workouts, days);
+    const totalWorkouts = days.reduce((total, date) => total + (ex.workouts[date] || []).length, 0);
 
     // Subtitle reflects the actual window so the user knows what the rate is
     // based on (e.g. "Last 5 days · sessions / week" while they're new).
@@ -4902,6 +5131,12 @@
     // Goals modal
     refs.exEditGoalsBtn?.addEventListener("click", () => openExGoalsModal());
     refs.exSaveGoalsBtn?.addEventListener("click", () => {
+      if (!validateInputs(refs.exGoalCaloriesInput, refs.exGoalProteinInput)
+        || !Number.isFinite(parseLocaleNumber(refs.exGoalCaloriesInput.value))
+        || !Number.isFinite(parseLocaleNumber(refs.exGoalProteinInput.value))) {
+        showToast("Enter both calorie and protein goals.");
+        return;
+      }
       exSetGoals(refs.exGoalCaloriesInput.value, refs.exGoalProteinInput.value);
       refs.exGoalsModal.close();
       renderExSnapshot();
@@ -5118,6 +5353,7 @@
       const cell = e.target.closest("[data-caffeine-day]");
       if (!cell || !refs.cafDateInput) return;
       refs.cafDateInput.value = cell.dataset.caffeineDay;
+      rememberDateSelection(refs.cafDateInput);
       renderCafDaySnapshot();
       renderCafPending();
       renderCafCalendar();
@@ -5150,7 +5386,11 @@
       refs.cafGoalModal.showModal();
     });
     refs.cafSaveGoalBtn?.addEventListener("click", () => {
-      cafSetGoal(refs.cafGoalInput.value);
+      if (!validateInputs(refs.cafGoalInput) || !Number.isFinite(parseLocaleNumber(refs.cafGoalInput.value))) {
+        showToast("Enter a cup limit between 1 and 20.");
+        return;
+      }
+      cafSetGoal(parseLocaleNumber(refs.cafGoalInput.value));
       refs.cafGoalModal.close();
       renderCaffeineDashboard();
       showToast("Daily limit updated.");
@@ -5179,6 +5419,7 @@
   }
 
   function handleAddMeal() {
+    if (!validateInputs(refs.exMealCaloriesInput, refs.exMealProteinInput, refs.exMealDateInput)) return;
     const calories = parseLocaleNumber(refs.exMealCaloriesInput.value);
     const protein = parseLocaleNumber(refs.exMealProteinInput.value);
     if ((!Number.isFinite(calories) || calories <= 0) && (!Number.isFinite(protein) || protein <= 0)) {
@@ -5218,6 +5459,7 @@
     refs.exMealEditCalories.value = meal.calories;
     refs.exMealEditProtein.value = meal.protein;
     refs.exMealEditDate.value = dateKey;
+    refs.exMealEditDate.max = todayKey();
     refs.exMealEditNote.value = meal.note;
     refs.exMealEditTypeButtons.forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.editMealType === meal.mealType);
@@ -5226,16 +5468,26 @@
   }
 
   function handleSaveMealEdit() {
-    if (!exUi.editingMealKey) return;
+    if (!exUi.editingMealKey || !validateInputs(refs.exMealEditCalories, refs.exMealEditProtein, refs.exMealEditDate)) return;
     const [dateKey, mealId] = exUi.editingMealKey.split("|");
     const activeType = refs.exMealEditTypeButtons.find((b) => b.classList.contains("active"));
-    exUpdateMeal(dateKey, mealId, {
+    const calories = parseLocaleNumber(refs.exMealEditCalories.value);
+    const protein = parseLocaleNumber(refs.exMealEditProtein.value);
+    if ((!Number.isFinite(calories) || calories <= 0) && (!Number.isFinite(protein) || protein <= 0)) {
+      showToast("Add at least calories or protein.");
+      return;
+    }
+    const ok = exUpdateMeal(dateKey, mealId, {
       mealType: activeType?.dataset.editMealType,
       calories: parseLocaleNumber(refs.exMealEditCalories.value),
       protein: parseLocaleNumber(refs.exMealEditProtein.value),
       note: refs.exMealEditNote.value,
       dateKey: refs.exMealEditDate.value,
     });
+    if (!ok) {
+      showToast("Couldn't update meal. Check the date and values.");
+      return;
+    }
     refs.exMealEditModal.close();
     exUi.editingMealKey = "";
     renderExSnapshot();
@@ -5298,6 +5550,7 @@
   }
 
   function handleAddWorkout() {
+    if (!validateInputs(refs.exWorkoutWeightInput, refs.exWorkoutRepsInput, refs.exWorkoutDateInput)) return;
     const rawWeight = parseLocaleNumber(refs.exWorkoutWeightInput.value);
     const rawReps = Math.floor(parseLocaleNumber(refs.exWorkoutRepsInput.value));
     const weightProvided = Number.isFinite(rawWeight) && rawWeight > 0;
@@ -5433,6 +5686,7 @@
     refs.exWorkoutEditWeight.value = w.weight > 0 ? w.weight : "";
     refs.exWorkoutEditReps.value = w.reps > 0 ? w.reps : "";
     refs.exWorkoutEditDate.value = dateKey;
+    refs.exWorkoutEditDate.max = todayKey();
     refs.exWorkoutEditE1rm.textContent =
       w.e1rm > 0
         ? `Estimated 1RM: ${formatNumber(roundTo(w.e1rm, 1))} kg`
@@ -5449,7 +5703,7 @@
   }
 
   function handleSaveWorkoutEdit() {
-    if (!exUi.editingWorkoutKey) return;
+    if (!exUi.editingWorkoutKey || !validateInputs(refs.exWorkoutEditWeight, refs.exWorkoutEditReps, refs.exWorkoutEditDate)) return;
     const [dateKey, workoutId] = exUi.editingWorkoutKey.split("|");
     const muscleGroups = refs.exWorkoutEditGroupButtons
       .filter((b) => b.classList.contains("active"))
@@ -5510,9 +5764,10 @@
   }
 
   function handleAddWeight() {
+    if (!validateInputs(refs.exWeightInput, refs.exWeightDateInput)) return;
     const kg = parseLocaleNumber(refs.exWeightInput.value);
-    if (!Number.isFinite(kg) || kg <= 0) {
-      showToast("Enter a valid weight.");
+    if (!Number.isFinite(kg) || kg < 20 || kg > 400) {
+      showToast("Enter a weight between 20 and 400 kg.");
       return;
     }
     const result = exAddWeight({ kg, dateKey: refs.exWeightDateInput.value });

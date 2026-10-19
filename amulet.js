@@ -200,20 +200,36 @@
   function ledgerView(slice) {
     const completions = new Map();
     const purchases = new Map();
+    const withdrawals = new Map();
+    const eventsById = new Map();
     let balance = 0;
     let earned = 0;
     for (const event of slice.ledger) {
       balance += event.amountOre;
+      eventsById.set(event.id, event);
       if (event.type === "earn") { completions.set(`${event.habitId}|${event.date}`, event); earned += event.amountOre; }
       if (event.type === "undo-earn") {
-        const original = slice.ledger.find(item => item.id === event.refId);
+        const original = eventsById.get(event.refId);
         if (original) completions.delete(`${original.habitId}|${original.date}`);
         earned += event.amountOre;
       }
       if (event.type === "purchase") purchases.set(event.itemId, event);
       if (event.type === "refund") purchases.delete(event.itemId);
+      if (event.type === "withdraw") withdrawals.set(event.id, event);
     }
-    return { completions, purchases, balance, earned };
+    return { completions, purchases, withdrawals, balance, earned };
+  }
+  function refundWithdrawal(slice, id) {
+    const original = ledgerView(slice).withdrawals.get(id);
+    if (!original) return false;
+    // Keep the original debit and pair it with the existing refund format.
+    // Cached clients understand purchase/refund, so they cannot silently drop
+    // a new event type and subtract the returned money on their next sync.
+    const itemId = uid("amexp");
+    original.type = "purchase";
+    original.itemId = itemId;
+    slice.ledger.push(newEvent("refund", { itemId, refId: original.id, label: original.label, amountOre: -original.amountOre }));
+    return true;
   }
   function goalStats(slice, from, to, view = ledgerView(slice)) {
     if (from > to) return { done: 0, goal: 0, percent: 0 };
@@ -227,6 +243,9 @@
         for (let offset = 0; offset < 7; offset++) {
           const date = shiftDate(week, offset);
           if (date < from || date > to || !isScheduled(habit, date)) continue;
+          // Removing an unfinished habit removes today's obligation. A recorded
+          // completion still counts, and all earlier dates retain their history.
+          if (habit.archivedOn === date && !view.completions.has(`${habit.id}|${date}`)) continue;
           const version = versionAt(habit, date);
           const key = version.from;
           if (!counts.has(key)) counts.set(key, { version, eligible: 0, done: 0 });
@@ -275,17 +294,57 @@
     element.innerHTML = html;
     if (focused) [...element.querySelectorAll("[data-am-focus]")].find(e => e.getAttribute("data-am-focus") === focused)?.focus({ preventScroll: true });
   }
-  function save(message) {
+  // Keep the existing row and its buttons alive so keyboard focus and the
+  // checkbox's CSS transitions survive a completion or background sync.
+  function patchNode(current, next) {
+    if (current.nodeType !== next.nodeType || current.nodeName !== next.nodeName) {
+      current.replaceWith(next);
+      return;
+    }
+    if (current.nodeType !== 1) {
+      if (current.nodeValue !== next.nodeValue) current.nodeValue = next.nodeValue;
+      return;
+    }
+    for (const attribute of [...current.attributes]) {
+      if (!next.hasAttribute(attribute.name)) current.removeAttribute(attribute.name);
+    }
+    for (const attribute of [...next.attributes]) {
+      if (current.getAttribute(attribute.name) !== attribute.value) current.setAttribute(attribute.name, attribute.value);
+    }
+    const oldChildren = [...current.childNodes];
+    const newChildren = [...next.childNodes];
+    for (let i = 0; i < Math.max(oldChildren.length, newChildren.length); i++) {
+      if (!newChildren[i]) oldChildren[i].remove();
+      else if (!oldChildren[i]) current.append(newChildren[i]);
+      else patchNode(oldChildren[i], newChildren[i]);
+    }
+  }
+  function updateHabitRows(element, html) {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const rows = new Map([...element.children].map(row => [row.dataset.amHabit, row]));
+    const retained = new Set();
+    [...template.content.children].forEach((next, index) => {
+      const previous = next.dataset.amHabit ? rows.get(next.dataset.amHabit) : null;
+      const row = previous || next;
+      if (previous) patchNode(previous, next);
+      if (element.children[index] !== row) element.insertBefore(row, element.children[index] || null);
+      retained.add(row);
+    });
+    for (const row of [...element.children]) if (!retained.has(row)) row.remove();
+  }
+  function save(message, options) {
     host.commit();
     render();
-    if (message) announce(message);
+    if (message) announce(message, options);
   }
-  function announce(message) {
+  function announce(message, { toast = true } = {}) {
     $("am-live").textContent = "";
-    requestAnimationFrame(() => { if (host) $("am-live").textContent = message; });
-    if (typeof host.toast === "function") host.toast(message);
+    if (toast && typeof host.toast === "function") host.toast(message);
+    else requestAnimationFrame(() => { if (host) $("am-live").textContent = message; });
   }
   function flashReward(amount) {
+    window.AppUI?.hideToast?.();
     const pop = $("am-reward-pop");
     pop.textContent = `+${money(amount)}`;
     pop.classList.remove("is-visible");
@@ -305,9 +364,11 @@
     host.root.addEventListener("click", onClick);
     host.root.addEventListener("submit", onSubmit);
     host.root.addEventListener("change", onChange);
+    host.root.addEventListener("animationend", event => {
+      if (event.animationName === "am-check-pop") event.target.closest(".am-habit-row")?.classList.remove("is-earning");
+    });
     const dialog = $("am-dialog");
     dialog.setAttribute("aria-labelledby", "am-dialog-title");
-    dialog.addEventListener("click", event => { if (event.target === dialog) closeDialog(); });
     dialog.addEventListener("close", () => { dialogContext = null; });
     host.root.addEventListener("keydown", event => {
       if (event.target.closest(".am-segmented") && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
@@ -355,10 +416,10 @@
   }
   function renderHabits(slice, view) {
     const visible = slice.habits.filter(h => (isScheduled(h, selectedDate) || view.completions.has(`${h.id}|${selectedDate}`)) && (!h.archivedOn || selectedDate < today() || view.completions.has(`${h.id}|${selectedDate}`)));
-    updateHTML($("am-habit-list"), visible.length ? visible.map(habit => {
+    updateHabitRows($("am-habit-list"), visible.length ? visible.map(habit => {
       const version = versionAt(habit, selectedDate);
       const complete = view.completions.get(`${habit.id}|${selectedDate}`);
-      return `<div class="am-habit-row${complete ? " is-complete" : ""}"><button type="button" class="am-habit-toggle" data-am-action="toggle-habit" data-id="${habit.id}" data-am-focus="habit-${habit.id}" aria-pressed="${Boolean(complete)}" aria-label="${escapeHTML(version.name)}, ${money(complete?.amountOre || version.rewardOre)}${complete ? ", completed; undo" : "; mark complete"}"><span class="am-check">${icons.check}</span><span class="am-habit-copy"><span class="am-habit-name">${escapeHTML(version.name)}</span>${version.days.length !== 7 || version.targetPerWeek !== 7 || habit.archivedOn ? `<span class="am-habit-meta">${escapeHTML(scheduleLabel(version))}${habit.archivedOn ? " · archived" : ""}</span>` : ""}</span><span class="am-reward">${complete ? "" : "+"}${money(complete?.amountOre || version.rewardOre)}</span></button>${!habit.archivedOn ? `<button class="am-habit-edit" data-am-action="edit-habit" data-id="${habit.id}" data-am-focus="edit-${habit.id}" aria-label="Edit ${escapeHTML(habit.name)}">${icons.edit}</button>` : ""}</div>`;
+      return `<div class="am-habit-row${complete ? " is-complete" : ""}" data-am-habit="${habit.id}"><button type="button" class="am-habit-toggle" data-am-action="toggle-habit" data-id="${habit.id}" data-am-focus="habit-${habit.id}" aria-pressed="${Boolean(complete)}" aria-label="${escapeHTML(version.name)}, ${money(complete?.amountOre || version.rewardOre)}${complete ? ", completed; undo" : "; mark complete"}"><span class="am-check">${icons.check}</span><span class="am-habit-copy"><span class="am-habit-name">${escapeHTML(version.name)}</span>${version.days.length !== 7 || version.targetPerWeek !== 7 || habit.archivedOn ? `<span class="am-habit-meta">${escapeHTML(scheduleLabel(version))}${habit.archivedOn ? " · archived" : ""}</span>` : ""}</span><span class="am-reward">${complete ? "" : "+"}${money(complete?.amountOre || version.rewardOre)}</span></button>${!habit.archivedOn ? `<button class="am-habit-edit" data-am-action="edit-habit" data-id="${habit.id}" data-am-focus="edit-${habit.id}" aria-label="Edit ${escapeHTML(habit.name)}">${icons.edit}</button>` : ""}</div>`;
     }).join("") : `<div class="am-empty"><p>${slice.habits.some(h => !h.archivedOn) ? "No habits scheduled." : "No habits."}</p><button class="am-button am-button-secondary" data-am-action="add-habit">${icons.plus} Add habit</button></div>`);
   }
 
@@ -382,7 +443,7 @@
   function renderWishes(slice, view) {
     const wishes = slice.wishlist.filter(item => !view.purchases.has(item.id));
     $("am-wishlist-count").textContent = String(wishes.length);
-    $("am-purchase-count").textContent = String(view.purchases.size);
+    $("am-purchase-count").textContent = String(view.purchases.size + view.withdrawals.size);
     for (const mode of ["wishlist", "purchases"]) {
       const tab = $(mode === "wishlist" ? "am-wishlist-tab" : "am-purchases-tab");
       tab.setAttribute("aria-selected", String(wishView === mode));
@@ -390,8 +451,8 @@
     }
     $("am-wish-list").setAttribute("aria-labelledby", wishView === "wishlist" ? "am-wishlist-tab" : "am-purchases-tab");
     if (wishView === "purchases") {
-      const purchases = [...view.purchases.values()].reverse();
-      updateHTML($("am-wish-list"), purchases.length ? purchases.map(event => `<article class="am-wish-row am-purchase-row"><span class="am-purchase-check" aria-hidden="true">${icons.check}</span><div class="am-wish-copy"><h4>${escapeHTML(event.label)}</h4><p>${formatDate(event.date, { year: "numeric" })} · ${money(-event.amountOre)}</p></div><button class="am-text-button" data-am-action="undo-purchase" data-id="${event.id}" data-am-focus="refund-${event.id}">Undo</button></article>`).join("") : '<div class="am-empty am-empty-small"><p>No purchases.</p></div>');
+      const purchases = slice.ledger.filter(event => event.type === "purchase" ? view.purchases.get(event.itemId)?.id === event.id : event.type === "withdraw" && view.withdrawals.has(event.id)).reverse();
+      updateHTML($("am-wish-list"), purchases.length ? purchases.map(event => `<article class="am-wish-row am-purchase-row"><span class="am-purchase-check" aria-hidden="true">${icons.check}</span><div class="am-wish-copy"><h4>${escapeHTML(event.label)}</h4><p>${formatDate(event.date, { year: "numeric" })} · ${money(-event.amountOre)}</p></div><button class="am-text-button" data-am-action="${event.type === "withdraw" ? "undo-withdrawal" : "undo-purchase"}" data-id="${event.id}" data-am-focus="refund-${event.id}" aria-label="Undo ${escapeHTML(event.label)}">Undo</button></article>`).join("") : '<div class="am-empty am-empty-small"><p>No purchases.</p></div>');
       return;
     }
     updateHTML($("am-wish-list"), wishes.length ? wishes.map(item => {
@@ -406,12 +467,24 @@
     $("am-dialog-body").innerHTML = body;
     const dialog = $("am-dialog");
     if (!dialog.open) dialog.showModal();
-    requestAnimationFrame(() => dialog.querySelector("[autofocus], input, button[type=submit]")?.focus());
+    dialog.scrollTop = 0;
+    requestAnimationFrame(() => {
+      const target = context.dangerous
+        ? dialog.querySelector('.am-form-actions [data-am-action="close-dialog"]')
+        : dialog.querySelector("[autofocus], input, button[type=submit]");
+      target?.focus({ preventScroll: true });
+    });
   }
   function closeDialog() { $("am-dialog").close(); dialogContext = null; }
   function formError(message) {
     const error = $("am-dialog-body").querySelector(".am-form-error");
-    if (error) { error.textContent = message; error.hidden = false; }
+    if (error) {
+      error.textContent = message;
+      error.hidden = false;
+      error.tabIndex = -1;
+      error.focus({ preventScroll: true });
+      error.scrollIntoView({ block: "nearest", behavior: "instant" });
+    }
   }
   function formFooter(label, dangerous = false) {
     return `<p class="am-form-error" role="alert" hidden></p><div class="am-form-actions"><button type="button" class="am-button am-button-secondary" data-am-action="close-dialog">Cancel</button><button type="submit" class="am-button${dangerous ? " am-button-danger" : " am-button-primary"}">${label}</button></div>`;
@@ -437,7 +510,7 @@
     openDialog("Spend from wallet", `<form class="am-form" data-am-form="withdraw"><p class="am-dialog-intro">Balance: <strong>${money(balance)}</strong></p><div class="am-field"><label for="am-spend-amount-input">Amount <span>KR</span></label><input id="am-spend-amount-input" name="amount" type="text" inputmode="decimal" placeholder="0" required autofocus></div><div class="am-field"><label for="am-spend-reason-input">Item <span>optional</span></label><input id="am-spend-reason-input" name="reason" type="text" maxlength="100" placeholder="Item name"></div>${formFooter("Subtract from wallet")}</form>`, { type: "withdraw" });
   }
   function openConfirmation(title, text, submitLabel, context, danger = false) {
-    openDialog(title, `<form class="am-form" data-am-form="confirm"><p class="am-dialog-intro">${escapeHTML(text)}</p>${formFooter(submitLabel, danger)}</form>`, context);
+    openDialog(title, `<form class="am-form" data-am-form="confirm"><p class="am-dialog-intro">${escapeHTML(text)}</p>${formFooter(submitLabel, danger)}</form>`, { ...context, dangerous: danger });
   }
   function newEvent(type, data) { return { id: uid("ame"), type, date: today(), at: new Date().toISOString(), ...data }; }
 
@@ -449,7 +522,7 @@
     const previous = view.completions.get(`${id}|${selectedDate}`);
     if (previous) {
       if (view.balance < previous.amountOre) {
-        announce("Those kroner have already been spent. Undo a purchase first, or earn enough to uncheck this habit.");
+        announce("Those kroner have already been spent. Undo the spending in Purchased, or earn enough to uncheck this habit.");
         return;
       }
       slice.ledger.push(newEvent("undo-earn", { refId: previous.id, habitId: id, amountOre: -previous.amountOre, label: previous.label }));
@@ -458,7 +531,9 @@
       if (!isScheduled(habit, selectedDate)) return;
       const version = versionAt(habit, selectedDate);
       slice.ledger.push(newEvent("earn", { habitId: id, date: selectedDate, amountOre: version.rewardOre, label: version.name }));
-      save(`${version.name} complete. ${money(version.rewardOre)} earned.`);
+      save(`${version.name} complete. ${money(version.rewardOre)} earned.`, { toast: false });
+      const row = $("am-habit-list").querySelector(`[data-am-habit="${id}"]`);
+      row?.classList.add("is-earning");
       flashReward(version.rewardOre);
     }
   }
@@ -491,6 +566,10 @@
       const wish = state().wishlist.find(w => w.id === id);
       const view = ledgerView(state());
       if (wish && !view.purchases.has(id) && view.balance >= wish.priceOre) openConfirmation("Confirm purchase", `Mark “${wish.name}” as purchased? ${money(wish.priceOre)} will leave your wallet, leaving ${money(view.balance - wish.priceOre)}.`, "Yes, purchased", { type: "purchase", id });
+    }
+    if (action === "undo-withdrawal") {
+      const original = ledgerView(state()).withdrawals.get(id);
+      if (original) openConfirmation("Undo spending?", `Return ${money(-original.amountOre)} for “${original.label}” to your wallet?`, "Undo spending", { type: "undo-withdraw", id });
     }
     if (action === "undo-purchase") {
       const original = state().ledger.find(e => e.id === id && e.type === "purchase");
@@ -552,7 +631,7 @@
       if (!amount) return formError("Enter an amount above 0 KR, with no more than two decimals.");
       if (amount > balance) return formError(`Your wallet has ${money(balance)}. Enter that amount or less.`);
       slice.ledger.push(newEvent("withdraw", { amountOre: -amount, label: cleanText(values.get("reason"), "Expense") }));
-      closeDialog(); save(`${money(amount)} subtracted from your wallet.`);
+      closeDialog(); wishView = "purchases"; save(`${money(amount)} subtracted from your wallet.`);
     } else {
       const view = ledgerView(slice);
       if (context.type === "remove-habit") {
@@ -568,6 +647,8 @@
         if (wish.priceOre > view.balance) return formError("Your wallet balance has changed. Insufficient balance.");
         slice.ledger.push(newEvent("purchase", { itemId: wish.id, label: wish.name, amountOre: -wish.priceOre }));
         wishView = "purchases";
+      } else if (context.type === "undo-withdraw") {
+        if (!refundWithdrawal(slice, context.id)) return formError("This spending has already been undone.");
       } else if (context.type === "refund") {
         const original = slice.ledger.find(e => e.id === context.id && e.type === "purchase");
         if (!original || view.purchases.get(original.itemId)?.id !== original.id) return formError("This purchase has already been undone.");
@@ -575,7 +656,10 @@
         if (!slice.wishlist.some(w => w.id === original.itemId)) slice.wishlist.push({ id: original.itemId, name: original.label, priceOre: -original.amountOre, createdAt: original.at });
         wishView = "wishlist";
       } else return;
-      closeDialog(); save({ "remove-habit": "Habit removed.", "remove-wish": "Item removed.", purchase: "Enjoy it. Confirm purchase", refund: "Purchase refunded." }[context.type]);
+      closeDialog(); save({ "remove-habit": "Habit removed.", "remove-wish": "Item removed.", purchase: "Purchase recorded.", refund: "Purchase refunded.", "undo-withdraw": "Spending undone." }[context.type]);
+      if (["purchase", "refund", "undo-withdraw"].includes(context.type)) {
+        $(wishView === "wishlist" ? "am-wishlist-tab" : "am-purchases-tab").focus({ preventScroll: true });
+      }
     }
   }
 
@@ -592,5 +676,5 @@
   }
   window.Amulet = { buildTemplate: defaultState, normalize, mount, render, hasData,
     // Pure operations are also exposed for regression testing of wallet math.
-    model: { ledgerView, goalStats, parseAmount, isScheduled, versionAt, today, shiftDate } };
+    model: { ledgerView, refundWithdrawal, goalStats, parseAmount, isScheduled, versionAt, today, shiftDate } };
 })();

@@ -1,20 +1,16 @@
 # Discipline OS
 
-A Notion-style habit operating system with a polished UI, weekly table, monthly calendar, and Google Sheets cloud sync support.
+A habit tracker with Habits, Exercise, Caffeine, and Amulet, backed by Google Sheets sync.
 
 ## Included
 
-- Sidebar `Daily Habits` view with fast today checkboxes
-- Cornerstone vs Regular habit sections (daily panel + editor)
-- Sidebar `Analytics` view (30-day completion per habit)
-- `Week Table` view (habit x day matrix + day notes)
-- `Month Heatmap` view (habit-by-day completion matrix)
-- `Full Month` calendar view with per-day habit toggles
-- One-tap `Strength Training` quick button
-- 10 default habits preloaded
-- Google Sheets cloud sync with local cache for faster relaunch + auth/session continuity
-- Google Sign-In gated sync (allowlist one email)
-- Automatic cloud pull/push after sign-in
+- Habits: daily check-offs, notes, weekly-goal charts, and a yearly history grid
+- Exercise: meals, calorie/protein goals, workout sessions and PRs, body weight, and history
+- Caffeine: cup logging, daily limits, and intake history
+- Amulet: rewarded habits, virtual KR wallet, wishlist, and purchases
+- An account menu with folder visibility, today's habits, and a separate habit editor
+- Google Sign-In and Google Sheets sync, with a local cache for fast startup
+- Phone-friendly forms, keyboard saves, accessible dialogs, and reduced-motion support
 
 ## Run locally
 
@@ -65,6 +61,8 @@ TZ=Europe/Oslo node tests/amulet-model.cjs
 TZ=Europe/Oslo node tests/sync.cjs
 node tests/startup.cjs
 node tests/service-worker.cjs
+node tests/core-ux.cjs
+node tests/interface.cjs
 ```
 
 The checks use isolated in-memory data and never contact your Google Sheet. Phone layouts were also checked at 320, 393 and 402 pixels wide, with desktop at 1280 pixels.
@@ -72,3 +70,9 @@ The checks use isolated in-memory data and never contact your Google Sheet. Phon
 ## Startup
 
 The app shows its saved state immediately and syncs with Google Sheets in the background. Only the visible tracker is rendered; other trackers render when opened. The service worker returns cached cloud configuration immediately while refreshing it for the next visit. Pending local edits stay protected during background sync. The first visit on a new device still needs to download the app.
+
+## Shared interface
+
+`ui.css` and `ui.js` refine navigation, forms, dialog focus and scroll behavior across all four trackers. Keep new dialogs outside `.app-column`, label their headings, and use `data-dialog-dismiss` for their close button. Feature handlers own Save/Cancel and data changes. Google account entry uses Google's rendered sign-in buttons in both the banner and menu; One Tap is not used as the button action.
+
+Wallet withdrawals now appear with wishlist purchases in Purchased and can be undone there. Undo reverses the original amount only once.

@@ -56,6 +56,75 @@ test('withdrawals cannot overdraw wallet and preserve exact balance', () => {
   const s=fixture(); s.ledger=[earned(),event('w1','withdraw',{amountOre:-451}),event('w2','withdraw',{amountOre:-550}),event('w3','withdraw',{amountOre:10})];
   const n=normalize(s); assert.equal(n.ledger.length,2); assert.equal(m.ledgerView(n).balance,549);
 });
+test('wallet spending can be undone exactly once using its captured debit and a standard refund', () => {
+  const s=fixture();
+  s.ledger=[earned(),event('w1','withdraw',{amountOre:-451,label:'Coffee'})];
+  const n=normalize(s), original=clone(n.ledger[1]);
+  assert.equal(m.refundWithdrawal(n,'w1'),true);
+  assert.equal(m.refundWithdrawal(n,'w1'),false);
+  const v=m.ledgerView(n);
+  assert.equal(n.ledger.length,3);
+  assert.equal(n.ledger[1].id,original.id);
+  assert.equal(n.ledger[1].date,original.date);
+  assert.equal(n.ledger[1].at,original.at);
+  assert.equal(n.ledger[1].amountOre,original.amountOre);
+  assert.equal(n.ledger[2].type,'refund');
+  assert.equal(n.ledger[2].amountOre,451);
+  assert.equal(n.ledger[2].label,'Coffee');
+  assert.equal(v.balance,1000);
+  assert.equal(v.withdrawals.size,0);
+  assert.equal(v.purchases.size,0);
+  assert.equal(v.earned,1000);
+  assert.equal(n.wishlist.length,0);
+  assert.deepEqual(clone(normalize(n)),clone(n));
+  // Replayed/forged refund amounts still use the captured original amount.
+  n.ledger[2].amountOre=999999;
+  n.ledger.push(event('duplicate-refund','refund',{refId:'w1',amountOre:999999}));
+  assert.equal(m.ledgerView(normalize(n)).balance,1000);
+});
+test('wallet spending history includes active expenses and rejects unknown or non-expense undo', () => {
+  const s=fixture();
+  s.ledger=[earned(),event('w1','withdraw',{amountOre:-200}),event('w2','withdraw',{amountOre:-300})];
+  const n=normalize(s);
+  assert.equal(m.refundWithdrawal(n,'missing'),false);
+  assert.equal(m.refundWithdrawal(n,'e1'),false);
+  assert.equal(m.refundWithdrawal(n,'w1'),true);
+  const v=m.ledgerView(n);
+  assert.equal(n.ledger.length,4);
+  assert.equal(v.balance,700);
+  assert.deepEqual(Array.from(v.withdrawals.keys()),['w2']);
+});
+test('undoing an expense restores enough balance to correct an accidental completion', () => {
+  const s=fixture();
+  s.ledger=[earned(),event('w1','withdraw',{amountOre:-1000}),event('u1','undo-earn',{refId:'e1'})];
+  const n=normalize(s);
+  assert.deepEqual(Array.from(n.ledger,e=>e.id),['e1','w1']);
+  assert.equal(m.refundWithdrawal(n,'w1'),true);
+  n.ledger.push(event('u2','undo-earn',{refId:'e1'}));
+  const v=m.ledgerView(normalize(n));
+  assert.equal(v.balance,0);
+  assert.equal(v.withdrawals.size,0);
+  assert.equal(v.completions.size,0);
+});
+test('expense undo survives a released v2 client normalization and cloud round-trip', () => {
+  const legacyContext=vm.createContext({window:{},Date:TestDate,Intl,Map,Set,Math,Number,String,Boolean,Array,Object,JSON,globalThis:{}});
+  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'fixtures','amulet-v2-normalizer.js'),'utf8'),legacyContext);
+  const oldNormalize=legacyContext.window.LegacyAmulet.normalize;
+  const s=fixture();
+  s.ledger=[earned(),event('w1','withdraw',{amountOre:-451,label:'Coffee'}),event('w2','withdraw',{amountOre:-125,label:'Tea'})];
+  s.wishlist=[{id:'wish1',name:'Sweater',priceOre:2000,createdAt:FIXED}];
+  const n=normalize(s);
+  assert.equal(m.refundWithdrawal(n,'w1'),true);
+  const oldClientState=oldNormalize(clone(n));
+  const roundTrip=normalize(clone(oldClientState));
+  assert.equal(m.ledgerView(oldClientState).balance,875);
+  assert.equal(m.ledgerView(roundTrip).balance,875);
+  assert.deepEqual(clone(roundTrip.ledger),clone(n.ledger));
+  assert.deepEqual(clone(roundTrip.wishlist),clone(s.wishlist));
+  assert.deepEqual(Array.from(m.ledgerView(roundTrip).withdrawals.keys()),['w2']);
+  assert.equal(m.refundWithdrawal(roundTrip,'w1'),false);
+});
+
 test('purchase and refund are idempotent; original price and label are retained', () => {
   const s=fixture(); s.wishlist=[{id:'wish1',name:'Renamed sweater',priceOre:4000,createdAt:FIXED}];
   s.ledger=[earned(),event('p1','purchase',{itemId:'wish1',amountOre:-900,label:'Original sweater'}),event('p2','purchase',{itemId:'wish1',amountOre:-10}),event('r1','refund',{refId:'p1'}),event('r2','refund',{refId:'p1'})];
@@ -75,6 +144,24 @@ test('archiving a habit keeps historical earnings and prevents later scheduling'
   const s=fixture(); s.habits[0].archivedOn='2026-10-16'; s.ledger=[earned('e1',{date:'2026-10-16'})];
   const n=normalize(s); assert.equal(m.ledgerView(n).balance,1000); assert.equal(m.isScheduled(n.habits[0],TODAY),false);
 });
+test('removing an unfinished habit excludes its archive-day goal without changing earlier history', () => {
+  const s=fixture(); s.habits[0].archivedOn=TODAY;
+  const n=normalize(s);
+  assert.equal(m.goalStats(n,TODAY,TODAY).goal,0);
+  assert.equal(m.goalStats(n,'2026-10-16',TODAY).goal,1);
+  assert.equal(m.isScheduled(n.habits[0],'2026-10-16'),true);
+});
+test('an archive-day completion keeps its goal and earnings, then an undo removes that obligation', () => {
+  const s=fixture(); s.habits[0].archivedOn=TODAY; s.ledger=[earned()];
+  const n=normalize(s), before=m.goalStats(n,TODAY,TODAY);
+  assert.equal(before.goal,1); assert.equal(before.done,1); assert.equal(before.percent,100);
+  assert.equal(m.ledgerView(n).balance,1000);
+  s.ledger.push(event('u1','undo-earn',{refId:'e1'}));
+  const undone=normalize(s), after=m.goalStats(undone,TODAY,TODAY);
+  assert.equal(after.goal,0); assert.equal(after.done,0);
+  assert.equal(m.ledgerView(undone).balance,0);
+});
+
 test('empty habit list remains empty across normalization', () => {
   const s=fixture(); s.habits=[]; assert.equal(normalize(s).habits.length,0);
 });

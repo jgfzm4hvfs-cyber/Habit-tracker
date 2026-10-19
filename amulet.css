@@ -75,6 +75,7 @@
 .am-habit-row.is-complete .am-check { background: var(--am-green); border-color: var(--am-green); color: #fff; }
 .am-habit-row.is-complete .am-reward { color: var(--am-green); }
 .am-habit-row.is-earning .am-check { animation: am-check-pop 300ms ease; }
+.am-habit-row.is-earning .am-check svg { animation: am-check-reveal 210ms ease both; }
 .am-habit-row.is-disabled { opacity: .5; }
 .am-empty { padding: 24px 8px; color: var(--am-muted); font-size: 13px; line-height: 1.6; text-align: center; }
 .am-empty h4 { margin-bottom: 6px; font-size: 15px; font-weight: 500; }
@@ -188,6 +189,7 @@
 .folder-toggle input[type="checkbox"]:focus-visible { outline: 3px solid #91b6fa; outline-offset: 3px; }
 .folder-toggle input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
 
+@keyframes am-check-reveal { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
 @keyframes am-check-pop { 0%, 100% { transform: scale(1); } 40% { transform: scale(.9); } 75% { transform: scale(1.08); } }
 @keyframes am-balance-tick { 0%, 100% { transform: translateY(0); } 40% { color: #2f8b5d; transform: translateY(-2px); } }
 @keyframes am-sheet-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }

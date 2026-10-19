@@ -17,8 +17,9 @@
       media="print"
       onload="this.media='all'"
     />
-    <link rel="stylesheet" href="./styles.css?v=20261017g" />
-    <link rel="stylesheet" href="./amulet.css?v=20261017g" />
+    <link rel="stylesheet" href="./styles.css?v=20261019a" />
+    <link rel="stylesheet" href="./amulet.css?v=20261019a" />
+    <link rel="stylesheet" href="./ui.css?v=20261019a" />
   </head>
   <body>
     <div class="bg-shape bg-shape-a" aria-hidden="true"></div>
@@ -27,7 +28,7 @@
     <div class="app-column">
       <!-- Top bar: hamburger + title + date -->
       <header class="top-bar">
-        <button id="openSidebarBtn" class="icon-btn" type="button" aria-label="Open menu">
+        <button id="openSidebarBtn" class="icon-btn" type="button" aria-label="Open menu" aria-controls="sidebarDrawer" aria-expanded="false">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
         </button>
         <div class="top-bar-title">
@@ -38,8 +39,9 @@
 
       <!-- Sign-in banner (only shown when not signed in) -->
       <div id="signInBanner" class="sign-in-banner" hidden>
-        <span class="sign-in-banner-text">🔒 Sign in with Google so your habits sync across devices.</span>
+        <span class="sign-in-banner-text">Sign in to sync your habits.</span>
         <div class="sign-in-banner-actions">
+          <div id="googleSignInBannerButton" class="google-signin-wrap"></div>
           <button id="signInBannerBtn" class="btn primary" type="button">Sign in</button>
           <button id="dismissSignInBannerBtn" class="btn ghost" type="button" aria-label="Dismiss">Later</button>
         </div>
@@ -75,9 +77,9 @@
         <header class="progress-top-head">
           <div>
             <p class="eyebrow">Progress</p>
-            <h2>Weekly-Goal Completion</h2>
+            <h2>Weekly goals</h2>
             <p id="progressTopSubheading" class="muted">
-              Rolling 7-day and 30-day completion. 100% = weekly goal hit.
+              Completion by habit
             </p>
           </div>
           <div class="progress-range-switch" role="tablist" aria-label="Progress range">
@@ -91,8 +93,8 @@
       <!-- 2. View toolbar + week table -->
       <section class="toolbar card" aria-label="View controls">
         <div class="view-switch" role="tablist" aria-label="Main view switch">
-          <button class="view-btn active" data-view-mode="week" type="button">Week</button>
-          <button class="view-btn" data-view-mode="heatmap" type="button">Month</button>
+          <button class="view-btn active" data-view-mode="week" type="button">Daily log</button>
+          <button class="view-btn" data-view-mode="heatmap" type="button">Year</button>
         </div>
         <div class="nav-tools">
           <button id="prevPeriodBtn" class="btn ghost" type="button" aria-label="Previous">‹</button>
@@ -113,7 +115,7 @@
       </section>
 
       <!-- 3. Monthly view-only grid (memento mori style) -->
-      <section id="heatmapView" class="main-view card" aria-label="Monthly habit grid">
+      <section id="heatmapView" class="main-view card" aria-label="Yearly habit grid">
         <div class="heatmap-scroll">
           <div id="habitHeatmap" class="habit-heatmap"></div>
         </div>
@@ -127,6 +129,7 @@
            ============================================================= -->
       <div id="exerciseApp" class="top-tab-pane" hidden>
 
+        <nav class="section-jumps" aria-label="Exercise sections"><a href="#exCaloriesSection">Nutrition</a><a href="#exWorkoutsSection">Workouts</a><a href="#exWeightSection">Weight</a></nav>
         <!-- Daily snapshot: today's totals + week overview -->
         <section id="exSnapshot" class="card ex-snapshot" aria-label="Today's snapshot">
           <header class="ex-snapshot-head">
@@ -220,6 +223,7 @@
             <div id="exMealsList" class="ex-meals-list"></div>
           </div>
 
+          <details class="history-disclosure"><summary>Nutrition history</summary><div class="history-content">
           <!-- 30-day chart -->
           <div class="ex-subsection">
             <header class="ex-subsection-head">
@@ -235,6 +239,7 @@
               <span class="ex-legend-item"><span class="ex-legend-swatch ex-legend-line"></span>Protein <span class="muted" style="font-weight:500">(right axis, g)</span></span>
             </div>
           </div>
+          </div></details>
         </section>
 
         <!-- Workouts section -->
@@ -293,6 +298,7 @@
             <button id="exAddWorkoutBtn" type="button" class="btn primary ex-add-btn">＋ Log workout</button>
           </div>
 
+          <details class="history-disclosure"><summary>Workout history &amp; trends</summary><div class="history-content">
           <!-- Stats row -->
           <div class="ex-stats-row">
             <div class="ex-stat">
@@ -361,6 +367,7 @@
             <div id="exProgressionChart" class="ex-chart-wrap"></div>
             <div id="exProgressionLegend" class="ex-chart-legend"></div>
           </div>
+          </div></details>
         </section>
 
         <!-- Weight section -->
@@ -602,38 +609,35 @@
     <!-- Sidebar drawer (slides in from left) -->
     <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
     <aside id="sidebarDrawer" class="sidebar-drawer" aria-label="Menu" hidden>
-      <header class="drawer-head">
-        <h2>Menu</h2>
-        <button id="closeSidebarBtn" class="icon-btn" type="button" aria-label="Close menu">✕</button>
-      </header>
-
-      <section class="drawer-section folder-settings" aria-labelledby="folderSettingsTitle">
-        <header class="drawer-section-head"><h3 id="folderSettingsTitle">Visible folders</h3></header>
-        <p class="muted">Hide a folder whenever you like. Its data stays saved.</p>
-        <div class="folder-toggle-list">
+      <header class="drawer-head"><h2>Menu</h2><button id="closeSidebarBtn" class="icon-btn" type="button" aria-label="Close menu"><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
+      <section id="drawerAccount" class="menu-account" aria-labelledby="accountTitle">
+        <div class="menu-account-heading"><span class="menu-account-icon"><svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg></span><div><h3 id="accountTitle">Account</h3><p id="authStatusText" class="muted">Not signed in</p></div></div>
+        <div id="googleSignInButton" class="google-signin-wrap"></div>
+        <p id="googleSignInError" class="muted" role="status" hidden></p>
+        <button id="signOutBtn" class="btn ghost" type="button">Sign out</button>
+      </section>
+      <div class="menu-group">
+        <details class="menu-section folder-settings">
+          <summary class="menu-row"><svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 7V5a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v2"/></svg><span id="folderSettingsTitle">Visible folders</span><svg class="menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></summary>
+          <div class="menu-detail-body">        <div class="folder-toggle-list">
           <label class="folder-toggle"><span>Habits</span><input type="checkbox" data-folder-toggle="habits" checked /><span class="folder-toggle-track" aria-hidden="true"></span></label>
           <label class="folder-toggle"><span>Exercise</span><input type="checkbox" data-folder-toggle="exercise" checked /><span class="folder-toggle-track" aria-hidden="true"></span></label>
           <label class="folder-toggle"><span>Caffeine</span><input type="checkbox" data-folder-toggle="caffeine" checked /><span class="folder-toggle-track" aria-hidden="true"></span></label>
           <label class="folder-toggle"><span>Amulet</span><input type="checkbox" data-folder-toggle="amulet" checked /><span class="folder-toggle-track" aria-hidden="true"></span></label>
-        </div>
-        <p class="muted folder-settings-note">Keep at least one folder visible.</p>
-      </section>
+        </div><p class="muted folder-settings-note">Hidden folders keep their data.</p></div>
+        </details>
+        <details class="menu-section">
+          <summary class="menu-row"><svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 3v4m8-4v4M4 11h16m-12 5 2 2 5-5"/></svg><span>Today's habits</span><span id="todaySummaryLabel" class="summary-label muted">0%</span><svg class="menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></summary>
+          <div class="menu-detail-body"><div id="todayChecklist" class="today-list"></div><div class="segment-track" id="todaySegmentTrack"></div></div>
+        </details>
+        <button id="openHabitManagerBtn" class="menu-row" type="button"><svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z"/></svg><span>Manage habits</span><svg class="menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+        <button id="openSyncBtn" class="menu-row" type="button"><svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7a8 8 0 0 0-13-3L4 7m0-5v5h5m-5 10a8 8 0 0 0 13 3l3-3m0 5v-5h-5"/></svg><span>Sync settings</span><svg class="menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+      </div>
+    </aside>
 
-      <!-- Today's quick-log -->
-      <section class="drawer-section">
-        <header class="drawer-section-head">
-          <h3>Today</h3>
-          <p id="todaySummaryLabel" class="summary-label muted">0%</p>
-        </header>
-        <div id="todayChecklist" class="today-list"></div>
-        <div class="segment-track" id="todaySegmentTrack"></div>
-      </section>
-
-      <!-- Habits -->
-      <section class="drawer-section">
-        <header class="drawer-section-head">
-          <h3>Habits</h3>
-        </header>
+    <dialog id="habitManagerModal" class="sync-modal habit-manager-modal" aria-labelledby="habitManagerTitle">
+      <form id="habitManagerForm" method="dialog">
+        <header class="section-head"><h2 id="habitManagerTitle">Manage habits</h2><button id="closeHabitManagerBtn" class="icon-btn dialog-close" type="button" aria-label="Close habit manager"><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
         <div id="habitEditorList" class="habit-editor-list"></div>
         <details class="add-habit-details">
           <summary>＋ Add new habit</summary>
@@ -656,27 +660,16 @@
             <button id="addHabitBtn" class="btn primary" type="button">Add habit</button>
           </div>
         </details>
-      </section>
-
-      <!-- Account -->
-      <section class="drawer-section">
-        <header class="drawer-section-head">
-          <h3>Account</h3>
-        </header>
-        <p id="authStatusText" class="muted">Google sign-in required for sync.</p>
-        <div id="googleSignInButton" class="google-signin-wrap"></div>
-        <button id="signOutBtn" class="btn ghost" type="button">Sign out</button>
-        <button id="openSyncBtn" class="btn secondary" type="button">Cloud sync settings</button>
-      </section>
-    </aside>
+      </form>
+    </dialog>
 
     <!-- Cloud Sync settings dialog (advanced) -->
-    <dialog id="syncModal" class="sync-modal">
+    <dialog aria-labelledby="syncModalTitle" id="syncModal" class="sync-modal">
       <form id="syncForm" method="dialog">
         <header class="section-head">
-          <h2>Google Sheets Sync</h2>
-          <p class="muted">Use one sheet for both iPhone and Mac.</p>
-        </header>
+          <h2 id="syncModalTitle">Google Sheets Sync</h2>
+          <p class="muted">Account and sync preferences</p>
+        <button type="button" class="icon-btn dialog-close" data-dialog-dismiss aria-label="Close dialog"><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
 
         <label for="cloudEnabled" class="inline-label">
           <input id="cloudEnabled" type="checkbox" />
@@ -710,12 +703,12 @@
     </dialog>
 
     <!-- Day details dialog -->
-    <dialog id="dayDetailsModal" class="sync-modal day-details-modal">
+    <dialog aria-labelledby="dayDetailsTitle" id="dayDetailsModal" class="sync-modal day-details-modal">
       <form id="dayDetailsForm" method="dialog">
         <header class="section-head">
           <h2 id="dayDetailsTitle">Day Details</h2>
           <p id="dayDetailsSummary" class="muted"></p>
-        </header>
+        <button type="button" class="icon-btn dialog-close" data-dialog-dismiss aria-label="Close dialog"><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
 
         <section class="day-details-progress">
           <div id="dayDetailsTrack" class="segment-track"></div>
@@ -738,12 +731,12 @@
     </dialog>
 
     <!-- Goals editor (Exercise tab) -->
-    <dialog id="exGoalsModal" class="sync-modal">
+    <dialog aria-labelledby="exGoalsModalTitle" id="exGoalsModal" class="sync-modal">
       <form id="exGoalsForm" method="dialog">
         <header class="section-head">
-          <h2>Daily goals</h2>
-          <p class="muted">Adjust as your training and nutrition needs change.</p>
-        </header>
+          <h2 id="exGoalsModalTitle">Daily goals</h2>
+          <p class="muted"></p>
+        <button type="button" class="icon-btn dialog-close" data-dialog-dismiss aria-label="Close dialog"><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
 
         <label for="exGoalCaloriesInput">Calorie goal (kcal)</label>
         <input id="exGoalCaloriesInput" type="number" inputmode="numeric" min="500" max="10000" step="50" />
@@ -759,12 +752,12 @@
     </dialog>
 
     <!-- Daily caffeine limit dialog (Caffeine tab) -->
-    <dialog id="cafGoalModal" class="sync-modal">
+    <dialog aria-labelledby="cafGoalModalTitle" id="cafGoalModal" class="sync-modal">
       <form id="cafGoalForm" method="dialog">
         <header class="section-head">
-          <h2>Daily limit</h2>
+          <h2 id="cafGoalModalTitle">Daily limit</h2>
           <p class="muted">Cups per day you want to stay under.</p>
-        </header>
+        <button type="button" class="icon-btn dialog-close" data-dialog-dismiss aria-label="Close dialog"><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
 
         <label for="cafGoalInput">Cup limit</label>
         <input id="cafGoalInput" type="number" inputmode="decimal" min="1" max="20" step="0.5" />
@@ -777,12 +770,12 @@
     </dialog>
 
     <!-- Meal edit dialog (Exercise tab) -->
-    <dialog id="exMealEditModal" class="sync-modal">
+    <dialog aria-labelledby="exMealEditModalTitle" id="exMealEditModal" class="sync-modal">
       <form id="exMealEditForm" method="dialog">
         <header class="section-head">
-          <h2>Edit meal</h2>
+          <h2 id="exMealEditModalTitle">Edit meal</h2>
           <p id="exMealEditMeta" class="muted"></p>
-        </header>
+        <button type="button" class="icon-btn dialog-close" data-dialog-dismiss aria-label="Close dialog"><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
 
         <div class="ex-meal-tags" role="group" aria-label="Meal type">
           <button type="button" class="ex-tag-btn" data-edit-meal-type="breakfast">🥞 Breakfast</button>
@@ -813,29 +806,29 @@
 
     <!-- Day workouts dialog: lists ALL lifts logged on a single day so the
          user can edit any of them or add another. -->
-    <dialog id="exDayWorkoutsModal" class="sync-modal">
+    <dialog aria-labelledby="exDayWorkoutsTitle" id="exDayWorkoutsModal" class="sync-modal">
       <form id="exDayWorkoutsForm" method="dialog">
         <header class="section-head">
           <h2 id="exDayWorkoutsTitle">Workouts</h2>
           <p id="exDayWorkoutsMeta" class="muted"></p>
-        </header>
+        <button type="button" class="icon-btn dialog-close" data-dialog-dismiss aria-label="Close dialog"><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
 
         <div id="exDayWorkoutsList" class="ex-day-workouts-list"></div>
 
         <div class="button-row modal-footer">
-          <button id="exAddAnotherLiftBtn" class="btn primary" type="button">＋ Add another lift to this day</button>
+          <button id="exAddAnotherLiftBtn" class="btn primary" type="button">＋ Add another workout</button>
           <button id="exCloseDayWorkoutsBtn" class="btn ghost" type="button">Close</button>
         </div>
       </form>
     </dialog>
 
     <!-- Workout edit dialog (Exercise tab) -->
-    <dialog id="exWorkoutEditModal" class="sync-modal">
+    <dialog aria-labelledby="exWorkoutEditModalTitle" id="exWorkoutEditModal" class="sync-modal">
       <form id="exWorkoutEditForm" method="dialog">
         <header class="section-head">
-          <h2>Edit workout</h2>
+          <h2 id="exWorkoutEditModalTitle">Edit workout</h2>
           <p id="exWorkoutEditMeta" class="muted"></p>
-        </header>
+        <button type="button" class="icon-btn dialog-close" data-dialog-dismiss aria-label="Close dialog"><svg class="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
 
         <div class="ex-meal-tags ex-workout-types" role="group" aria-label="Muscle groups (multi-select)">
           <button type="button" class="ex-tag-btn" data-edit-muscle-group="legs">Legs</button>
@@ -873,7 +866,8 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="./cloud-config.js?v=20260214" defer></script>
-    <script src="./amulet.js?v=20261017g" defer></script>
-    <script src="./app.js?v=20261017g" defer></script>
+    <script src="./amulet.js?v=20261019a" defer></script>
+    <script src="./app.js?v=20261019a" defer></script>
+    <script src="./ui.js?v=20261019a" defer></script>
   </body>
 </html>
