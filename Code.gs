@@ -86,9 +86,23 @@ function handleRequest_(e) {
       const lock = LockService.getScriptLock();
       lock.waitLock(30000);
       try {
+        // Older clients omit this field; newer clients protect against stale uploads.
+        if (Object.prototype.hasOwnProperty.call(req, 'expectedUpdatedAt')) {
+          const currentRow = findUserRow_(userId);
+          const currentUpdatedAt = currentRow ? String(currentRow.values[1] || '') : '';
+          if (String(req.expectedUpdatedAt || '') !== currentUpdatedAt) {
+            return json_({
+              ok: false,
+              error: 'Cloud data changed on another device',
+              code: 'SYNC_CONFLICT',
+            });
+          }
+        }
         const updatedAt = new Date().toISOString();
         const stateJson = JSON.stringify(req.state);
         upsertUserState_(userId, updatedAt, stateJson);
+        // Complete deferred spreadsheet writes before acknowledging the upload.
+        SpreadsheetApp.flush();
         return json_({ ok: true, updatedAt: updatedAt });
       } finally {
         lock.releaseLock();
@@ -254,8 +268,7 @@ function ensureSheet_() {
   const existingHeaders = sheet.getRange(1, 1, 1, HEADERS.length).getValues()[0];
   const mismatch = HEADERS.some((header, idx) => existingHeaders[idx] !== header);
   if (mismatch) {
-    sheet.clearContents();
-    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+    throw new Error('Cloud sheet headers do not match. Existing data was preserved.');
   }
 }
 
@@ -265,12 +278,16 @@ function findUserRow_(userId) {
     return null;
   }
 
-  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, HEADERS.length).getValues();
+  const columnCount = Math.max(HEADERS.length, sheet.getLastColumn());
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, columnCount).getValues();
   for (let i = 0; i < values.length; i += 1) {
     if (String(values[i][0]) === userId) {
+      const decodedValues = values[i].slice(0, HEADERS.length);
+      decodedValues[2] = decodeStoredState_(values[i]);
       return {
         row: i + 2,
-        values: values[i],
+        values: decodedValues,
+        storedColumnCount: columnCount,
       };
     }
   }
@@ -278,14 +295,71 @@ function findUserRow_(userId) {
   return null;
 }
 
+// Leave the original three columns intact. Large snapshots use a manifest in
+// state_json and safely prefixed UTF-8/base64 chunks in the following columns.
+const STATE_INLINE_MAX_CHARS = 45000;
+const STATE_CHUNK_DATA_CHARS = 44000;
+const STATE_MANIFEST_PREFIX = 'HT_STATE_V1:';
+const STATE_CHUNK_PREFIX = 'HT_CHUNK_V1:';
+
+function encodeStoredState_(stateJson) {
+  if (stateJson.length <= STATE_INLINE_MAX_CHARS) {
+    return [stateJson];
+  }
+  const encoded = Utilities.base64Encode(stateJson, Utilities.Charset.UTF_8);
+  const chunks = [];
+  for (let offset = 0; offset < encoded.length; offset += STATE_CHUNK_DATA_CHARS) {
+    chunks.push(STATE_CHUNK_PREFIX + encoded.slice(offset, offset + STATE_CHUNK_DATA_CHARS));
+  }
+  const manifest = {
+    encoding: 'base64-utf8',
+    chunks: chunks.length,
+    length: stateJson.length,
+  };
+  return [STATE_MANIFEST_PREFIX + JSON.stringify(manifest)].concat(chunks);
+}
+
+function decodeStoredState_(rowValues) {
+  const raw = String(rowValues[2] || '');
+  if (raw.indexOf(STATE_MANIFEST_PREFIX) !== 0) {
+    return raw;
+  }
+  try {
+    const manifest = JSON.parse(raw.slice(STATE_MANIFEST_PREFIX.length));
+    if (manifest.encoding !== 'base64-utf8' || !Number.isInteger(manifest.chunks)
+        || manifest.chunks < 1 || manifest.chunks > rowValues.length - HEADERS.length
+        || !Number.isInteger(manifest.length) || manifest.length < 0) {
+      throw new Error('Invalid manifest');
+    }
+    let encoded = '';
+    for (let i = 0; i < manifest.chunks; i += 1) {
+      const chunk = String(rowValues[HEADERS.length + i] || '');
+      if (chunk.indexOf(STATE_CHUNK_PREFIX) !== 0) throw new Error('Missing chunk');
+      encoded += chunk.slice(STATE_CHUNK_PREFIX.length);
+    }
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw new Error('Invalid encoding');
+    const stateJson = Utilities.newBlob(Utilities.base64Decode(encoded)).getDataAsString('UTF-8');
+    if (stateJson.length !== manifest.length) throw new Error('Incomplete state');
+    JSON.parse(stateJson);
+    return stateJson;
+  } catch (error) {
+    throw new Error('Cloud data is incomplete or damaged. Existing data was preserved.');
+  }
+}
+
 function upsertUserState_(userId, updatedAt, stateJson) {
   const sheet = getSpreadsheet_().getSheetByName(SHEET_NAME);
   const rowInfo = findUserRow_(userId);
+  const cells = [userId, updatedAt].concat(encodeStoredState_(stateJson));
+  const maxColumns = sheet.getMaxColumns();
+  if (cells.length > maxColumns) sheet.insertColumnsAfter(maxColumns, cells.length - maxColumns);
 
   if (rowInfo) {
-    sheet.getRange(rowInfo.row, 1, 1, HEADERS.length).setValues([[userId, updatedAt, stateJson]]);
+    // Blank any obsolete chunks when a snapshot shrinks, without touching other users.
+    while (cells.length < rowInfo.storedColumnCount) cells.push('');
+    sheet.getRange(rowInfo.row, 1, 1, cells.length).setValues([cells]);
   } else {
-    sheet.appendRow([userId, updatedAt, stateJson]);
+    sheet.appendRow(cells);
   }
 }
 

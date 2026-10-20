@@ -8,6 +8,8 @@
   const CLOUD_PUSH_ERROR_RETRY_MS = 15000;
   const LOCAL_STATE_KEY = "discipline_os_state_v2";
   const LOCAL_PENDING_KEY = "discipline_os_pending_v1";
+  const LOCAL_PULL_BACKUPS_KEY = "discipline_os_pre_pull_backups_v1";
+  const CLOUD_CONFLICT_MESSAGE = "Newer cloud data available. Open sync settings to review.";
   const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const HABIT_TYPE_CORNERSTONE = "cornerstone";
   const HABIT_TYPE_REGULAR = "regular";
@@ -267,6 +269,7 @@
     pullTimer: null,
     hasLocalChanges: readLocalPendingChanges(),
     changeRevision: 0,
+    pushBlockedByConflict: false,
     lastPullReason: "none",
     status: "local",
     message: "Local only",
@@ -2268,6 +2271,10 @@
     }
 
     cloudRuntime.hasLocalChanges = true;
+    if (cloudRuntime.pushBlockedByConflict) {
+      updateSyncStatus("offline", CLOUD_CONFLICT_MESSAGE);
+      return;
+    }
     updateSyncStatus("syncing", statusMessage);
 
     if (cloudRuntime.pushTimer) {
@@ -2297,7 +2304,10 @@
 
     try {
       await requestCloudApi("ping");
-      updateSyncStatus("synced", "Cloud connected");
+      updateSyncStatus(
+        cloudRuntime.pushBlockedByConflict ? "offline" : "synced",
+        cloudRuntime.pushBlockedByConflict ? CLOUD_CONFLICT_MESSAGE : "Cloud connected",
+      );
       return true;
     } catch (error) {
       updateSyncStatus("error", `Test failed: ${getErrorMessage(error)}`);
@@ -2351,7 +2361,8 @@
         force ||
         !state.cloud.lastSyncedAt ||
         !serverUpdatedAt ||
-        serverUpdatedAt > state.cloud.lastSyncedAt;
+        serverUpdatedAt !== state.cloud.lastSyncedAt ||
+        (interactive && cloudRuntime.hasLocalChanges);
 
       if (!isNewer) {
         updateSyncStatus("synced", "Already up to date");
@@ -2373,6 +2384,7 @@
           cloudRuntime.lastPullReason = "cancelled";
           return false;
         }
+        backupLocalDataBeforePull();
       }
 
       const localCloud = { ...state.cloud };
@@ -2399,6 +2411,11 @@
       };
 
       cloudRuntime.hasLocalChanges = false;
+      cloudRuntime.pushBlockedByConflict = false;
+      if (cloudRuntime.pushTimer) {
+        clearTimeout(cloudRuntime.pushTimer);
+        cloudRuntime.pushTimer = null;
+      }
       persistState({ skipCloud: true, silent: true });
       updateSyncStatus("synced", "Pulled from cloud");
       cloudRuntime.lastPullReason = "pulled";
@@ -2415,6 +2432,10 @@
 
   async function pushToCloud(options = {}) {
     const { reason = "auto" } = options;
+    if (reason === "auto" && cloudRuntime.pushBlockedByConflict) {
+      updateSyncStatus("offline", CLOUD_CONFLICT_MESSAGE);
+      return false;
+    }
     if (reason === "auto" && !state.cloud.lastSyncedAt) {
       updateSyncStatus("local", "First sync needs a manual Push or Pull in cloud settings");
       renderSyncPanel();
@@ -2434,14 +2455,29 @@
     updateSyncStatus("syncing", reason === "manual" ? "Pushing..." : "Syncing...");
     renderSyncPanel();
 
-    const uploadedRevision = cloudRuntime.changeRevision;
     try {
+      // Compare with the server before uploading an entire snapshot. The server
+      // checks the same timestamp under its lock so a second device cannot race it.
+      const currentCloud = await requestCloudApi("ping");
+      const expectedUpdatedAt = String(currentCloud.updatedAt || "");
+      if (expectedUpdatedAt !== String(state.cloud.lastSyncedAt || "")) {
+        stopCloudPushForConflict();
+        if (reason !== "manual" || !window.confirm(
+          "Cloud data changed on another device. Replace it with this device's data? Changes from the other device will be overwritten.",
+        )) {
+          return false;
+        }
+      }
+
+      const uploadedRevision = cloudRuntime.changeRevision;
       const response = await requestCloudApi("push", {
         state: buildCloudPayload(),
         clientUpdatedAt: new Date().toISOString(),
+        expectedUpdatedAt,
       });
 
       state.cloud.lastSyncedAt = String(response.updatedAt || new Date().toISOString());
+      cloudRuntime.pushBlockedByConflict = false;
       cloudRuntime.hasLocalChanges = cloudRuntime.changeRevision !== uploadedRevision;
       persistState({ skipCloud: true, silent: true });
       if (cloudRuntime.hasLocalChanges) {
@@ -2451,13 +2487,48 @@
       }
       return true;
     } catch (error) {
+      if (error.code === "SYNC_CONFLICT") {
+        stopCloudPushForConflict();
+        return false;
+      }
       cloudRuntime.hasLocalChanges = true;
+      saveStateLocally();
       scheduleCloudPush({ delayMs: CLOUD_PUSH_ERROR_RETRY_MS, statusMessage: "Retrying sync..." });
       updateSyncStatus("offline", `Push pending: ${getErrorMessage(error)}`);
       return false;
     } finally {
       cloudRuntime.inFlight = false;
       renderAll();
+    }
+  }
+
+  function stopCloudPushForConflict() {
+    cloudRuntime.pushBlockedByConflict = true;
+    cloudRuntime.hasLocalChanges = true;
+    if (cloudRuntime.pushTimer) {
+      clearTimeout(cloudRuntime.pushTimer);
+      cloudRuntime.pushTimer = null;
+    }
+    saveStateLocally();
+    updateSyncStatus("offline", CLOUD_CONFLICT_MESSAGE);
+  }
+
+  function backupLocalDataBeforePull() {
+    try {
+      const stored = window.localStorage.getItem(LOCAL_PULL_BACKUPS_KEY);
+      const previous = stored ? JSON.parse(stored) : [];
+      if (!Array.isArray(previous)) throw new Error("Invalid backup history");
+      const backups = [{
+        savedAt: new Date().toISOString(),
+        state: buildCloudPayload(),
+      }, ...previous].slice(0, 3);
+      const serialized = JSON.stringify(backups);
+      window.localStorage.setItem(LOCAL_PULL_BACKUPS_KEY, serialized);
+      if (window.localStorage.getItem(LOCAL_PULL_BACKUPS_KEY) !== serialized) {
+        throw new Error("Backup could not be verified");
+      }
+    } catch (_) {
+      throw new Error("Local backup could not be saved. Your data has not been replaced.");
     }
   }
 
@@ -2513,7 +2584,9 @@
         persistState({ skipCloud: true, silent: true });
         renderAuthIndicators();
       }
-      throw new Error(message);
+      const error = new Error(message);
+      if (parsed?.code) error.code = String(parsed.code);
+      throw error;
     }
 
     return parsed;
