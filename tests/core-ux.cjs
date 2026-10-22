@@ -12,9 +12,10 @@ function harness({ configured = true } = {}) {
     constructor(...args) { super(...(args.length ? args : [now])); }
     static now() { return now; }
   }
-  const elements = new Map(), intervals = new Map(), storage = new Map();
+  const elements = new Map(), intervals = new Map(), storage = new Map(), events = new Map();
+  const addEventListener = (name, callback) => { if (!events.has(name)) events.set(name, []); events.get(name).push(callback); };
   let timerId = 0;
-  const document = { activeElement: null, hidden: false };
+  const document = { activeElement: null, hidden: false, addEventListener };
   class Element {
     constructor(tag = 'div') {
       this.tagName = tag.toUpperCase(); this.dataset = {}; this.children = [];
@@ -59,17 +60,18 @@ function harness({ configured = true } = {}) {
   document.querySelectorAll = selector => [...elements.values()].filter(element => element.matches(selector));
   document.querySelector = () => null;
   document.head = new Element('head'); document.body = new Element('body');
-  const localStorage = { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, String(value)), removeItem: key => storage.delete(key) };
-  const window = { localStorage, matchMedia: () => ({ matches: true }), scrollTo() {},
+  const localStorage = { get length() { return storage.size; }, key: index => [...storage.keys()][index] ?? null, getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, String(value)), removeItem: key => storage.delete(key) };
+  const window = { localStorage, addEventListener, matchMedia: () => ({ matches: true }), scrollTo() {},
     setTimeout: () => ++timerId, clearTimeout() {},
     setInterval: callback => { intervals.set(++timerId, callback); return timerId; }, clearInterval: id => intervals.delete(id),
     DISCIPLINE_OS_AUTH_CONFIG: { googleClientId: configured ? 'synthetic-test-client' : '' } };
   let fetchHandler = async () => { throw new Error('Unexpected test network request'); };
-  const context = vm.createContext({ window, document, navigator: {}, Date: Clock, Intl, Map, Set, Math, Number,
+  const context = vm.createContext({ window, document, navigator: {}, URL, Date: Clock, Intl, Map, Set, Math, Number,
     String, Boolean, Array, Object, JSON, Uint8Array, atob: value => Buffer.from(value, 'base64').toString('binary'),
     setTimeout: window.setTimeout, clearTimeout: window.clearTimeout, clearInterval: window.clearInterval,
     fetch: (...args) => fetchHandler(...args), console });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'amulet.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'sync-merge.js'), 'utf8'), context);
   let source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8')
     .replace(/  window\.Amulet\.mount\(\{[\s\S]*?\n  \}\);/, '')
     .replace('  initialize();', '  // Explicit isolated test setup.');
@@ -142,13 +144,16 @@ function authNodes(h) { ['googleSignInButton', 'googleSignInBannerButton', 'goog
   });
   await test('a fresh Google credential cannot retain the previous account session', () => {
     const h = harness();
+    h.state.auth.email = 'previous@example.test';
     h.state.auth.sessionToken = 'previous-synthetic-session'; h.state.auth.sessionExpiresAt = '2099-01-01';
     const payload = Buffer.from(JSON.stringify({ email: 'example@example.test', exp: Math.floor(new Date('2026-10-18T12:00:00+02:00').getTime() / 1000) })).toString('base64url');
     h.handleGoogleCredential({ credential: `test.${payload}.test` });
     assert.equal(h.state.auth.sessionToken, ''); assert.equal(h.state.auth.email, 'example@example.test'); assert.equal(h.state.auth.signedIn, true);
   });
   await test('a late session exchange cannot sign the user back in after sign-out', async () => {
-    const h = harness(); h.state.auth.idToken = 'synthetic-inflight-token'; h.state.cloud.webAppUrl = 'https://example.test/exec';
+    const h = harness();
+    const payload = Buffer.from(JSON.stringify({ email: 'example@example.test', exp: Date.parse('2026-10-18T12:00:00+02:00') / 1000 })).toString('base64url');
+    h.state.auth.idToken = `synthetic.${payload}.signature`; h.state.cloud.webAppUrl = 'https://example.test/exec';
     let finish; h.setFetch(() => new Promise(resolve => { finish = resolve; }));
     const exchange = h.exchangeIdTokenForSession(); h.signOutGoogle();
     finish({ ok: true, json: async () => ({ ok: true, sessionToken: 'synthetic-session', expiresAt: '2099-01-01' }) }); await exchange;

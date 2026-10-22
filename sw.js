@@ -1,5 +1,6 @@
-const CACHE_NAME = "discipline-os-cache-v38";
-const APP_ASSETS = ["./", "./index.html", "./styles.css?v=20261019b", "./cloud-config.js?v=20260214", "./app.js?v=20261020a", "./manifest.webmanifest?v=20261017k", "./apple-touch-icon.png?v=20261017k", "./icons/amulet.svg?v=20261017k", "./icons/amulet-192.png?v=20261017k", "./icons/amulet-512.png?v=20261017k", "./amulet.css?v=20261019b", "./amulet.js?v=20261019b", "./ui.css?v=20261019b", "./ui.js?v=20261019b"];
+const APP_VERSION = "20261022a";
+const CACHE_NAME = "discipline-os-cache-v39";
+const APP_ASSETS = ["./", "./index.html", "./styles.css?v=20261019b", "./cloud-config.js?v=20260214", "./sync-merge.js?v=20261022a", "./app.js?v=20261022a", "./manifest.webmanifest?v=20261017k", "./apple-touch-icon.png?v=20261017k", "./icons/amulet.svg?v=20261017k", "./icons/amulet-192.png?v=20261017k", "./icons/amulet-512.png?v=20261017k", "./amulet.css?v=20261019b", "./amulet.js?v=20261019b", "./ui.css?v=20261019b", "./ui.js?v=20261019b"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -21,7 +22,18 @@ self.addEventListener("activate", (event) => {
             .map((key) => caches.delete(key)),
         ),
       )
-      .then(() => self.clients.claim()),
+      .then(() => self.clients.claim())
+      .then(async () => {
+        // Older installed copies otherwise keep running the broken sign-in
+        // code indefinitely. Their habit edits are already persisted locally.
+        const pages = await self.clients.matchAll({ type: "window" });
+        await Promise.all(pages.map(async (page) => {
+          const url = new URL(page.url);
+          if (url.searchParams.get("v") === APP_VERSION) return;
+          url.searchParams.set("v", APP_VERSION);
+          try { await page.navigate(url.href); } catch (_) { /* A closed page needs no update. */ }
+        }));
+      }),
   );
 });
 

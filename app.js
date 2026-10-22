@@ -1,6 +1,7 @@
 (() => {
   "use strict";
 
+  const APP_VERSION = "20261022a";
   const WEEK_STARTS_ON = 1;
   const CLOUD_SYNC_DEBOUNCE_MS = 450;
   const CLOUD_PULL_INTERVAL_MS = 45000;
@@ -8,8 +9,9 @@
   const CLOUD_PUSH_ERROR_RETRY_MS = 15000;
   const LOCAL_STATE_KEY = "discipline_os_state_v2";
   const LOCAL_PENDING_KEY = "discipline_os_pending_v1";
+  const LOCAL_DRAFT_KEY = `discipline_os_draft_v1_${generateId()}`;
+  const LOCAL_AUTH_KEY = "discipline_os_auth_v1";
   const LOCAL_PULL_BACKUPS_KEY = "discipline_os_pre_pull_backups_v1";
-  const CLOUD_CONFLICT_MESSAGE = "Newer cloud data available. Open sync settings to review.";
   const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const HABIT_TYPE_CORNERSTONE = "cornerstone";
   const HABIT_TYPE_REGULAR = "regular";
@@ -269,13 +271,14 @@
     pullTimer: null,
     hasLocalChanges: readLocalPendingChanges(),
     changeRevision: 0,
-    pushBlockedByConflict: false,
     lastPullReason: "none",
     status: "local",
     message: "Local only",
   };
 
   let state = normalizeState(loadPersistedState());
+  cloudRuntime.draftBase = !cloudRuntime.hasLocalChanges && state.cloud.lastSyncedAt
+    ? { state: buildCloudPayload(), updatedAt: state.cloud.lastSyncedAt } : null;
   let weekCursor = startOfDay(new Date());
   let monthCursor = startOfMonth(new Date());
   let activeDayDetailsKey = "";
@@ -286,7 +289,12 @@
   let hasPositionedHeatmap = false;
   let habitEditorSignature = "";
   let renderedCalendarDay = todayKey();
-  const googleAuthRuntime = { initialized: false, pending: null, error: "" };
+  const googleAuthRuntime = {
+    initialized: false, pending: null, error: "", hooksBound: false,
+    exchangePending: null, exchangeId: "", exchangeTimer: null,
+    exchangeFailures: 0, nextExchangeAt: 0, authVersion: "", authEpoch: 0,
+    explicitSignedOut: false, promptShown: false,
+  };
 
   const refs = {
     todayLabel: byId("todayLabel"),
@@ -524,6 +532,14 @@
   initialize();
 
   function initialize() {
+    // Mark loaded code so an offline-cache update can refresh only older pages.
+    if (window.history?.replaceState && window.location?.href) {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("v", APP_VERSION);
+        window.history.replaceState(null, "", url.href);
+      } catch (_) { /* Tracking remains available when history is restricted. */ }
+    }
     bindEvents();
     // Show the saved state before authentication or any network requests.
     renderAll();
@@ -542,7 +558,7 @@
     });
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./sw.js").catch(() => {
+        navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).catch(() => {
           // Online use still works when the browser disallows offline storage.
         });
       });
@@ -2194,401 +2210,319 @@
 
   function initializeCloudSync() {
     startCloudPullTicker();
-
     if (!state.cloud.enabled) {
-      updateSyncStatus("local", "Cloud not configured");
+      updateSyncStatus("local", "Saved on this device");
       return Promise.resolve(false);
     }
-
     if (!canUseCloudSync()) {
-      updateSyncStatus("error", "Missing cloud config");
+      updateSyncStatus("local", "Sign in to sync. Changes are saved on this device.");
       return Promise.resolve(false);
     }
-
-    updateSyncStatus("syncing", "Connecting...");
     return bootstrapCloudSyncNow();
   }
 
-  async function bootstrapCloudSyncNow() {
-    if (!canUseCloudSync()) {
-      return false;
-    }
-
-    if (cloudRuntime.hasLocalChanges && state.cloud.lastSyncedAt) {
-      return pushToCloud({ reason: "auto" });
-    }
-    updateSyncStatus("syncing", "Starting cloud sync...");
-
-    const pulled = await pullFromCloud({ interactive: false, force: false });
-    if (!pulled && cloudRuntime.lastPullReason === "empty") {
-      updateSyncStatus("syncing", "Initializing cloud record...");
-      await pushToCloud({ reason: "manual" });
-      return true;
-    }
-    return pulled;
+  function bootstrapCloudSyncNow() {
+    return synchronizeCloud();
   }
 
   function startCloudPullTicker() {
-    if (cloudRuntime.pullTimer) {
-      clearInterval(cloudRuntime.pullTimer);
-    }
-
+    if (cloudRuntime.pullTimer) clearInterval(cloudRuntime.pullTimer);
     cloudRuntime.pullTimer = window.setInterval(() => {
-      if (!canUseCloudSync()) {
-        return;
-      }
-      void pullFromCloud({ interactive: false, skipIfDirty: true });
+      if (!document.hidden && canUseCloudSync()) void synchronizeCloud();
     }, CLOUD_PULL_INTERVAL_MS);
   }
 
   function clearCloudTimers() {
-    if (cloudRuntime.pullTimer) {
-      clearInterval(cloudRuntime.pullTimer);
-      cloudRuntime.pullTimer = null;
-    }
-
-    if (cloudRuntime.pushTimer) {
-      clearTimeout(cloudRuntime.pushTimer);
-      cloudRuntime.pushTimer = null;
-    }
+    if (cloudRuntime.pullTimer) clearInterval(cloudRuntime.pullTimer);
+    if (cloudRuntime.pushTimer) clearTimeout(cloudRuntime.pushTimer);
+    cloudRuntime.pullTimer = null;
+    cloudRuntime.pushTimer = null;
   }
 
   function canUseCloudSync() {
-    if (!state.cloud.enabled || !state.cloud.webAppUrl || !state.auth) {
-      return false;
-    }
-    if (hasValidSessionToken_()) {
-      return true;
-    }
-    return Boolean(state.auth.idToken && !isJwtExpired(state.auth.idToken, 45));
+    if (!state.cloud.enabled || !state.cloud.webAppUrl || !state.auth) return false;
+    return hasValidSessionToken_() || Boolean(state.auth.idToken && !isJwtExpired(state.auth.idToken, 45));
   }
 
   function scheduleCloudPush(options = {}) {
-    const { delayMs = CLOUD_SYNC_DEBOUNCE_MS, statusMessage = "Sync queued" } = options;
-
-    if (!canUseCloudSync()) {
-      return;
-    }
-
+    const { delayMs = CLOUD_SYNC_DEBOUNCE_MS, statusMessage = "Saving..." } = options;
     cloudRuntime.hasLocalChanges = true;
-    if (cloudRuntime.pushBlockedByConflict) {
-      updateSyncStatus("offline", CLOUD_CONFLICT_MESSAGE);
+    if (!canUseCloudSync()) return;
+    if (cloudRuntime.pushTimer) clearTimeout(cloudRuntime.pushTimer);
+    if (cloudRuntime.walletConflict) {
+      updateSyncStatus("offline", "Wallet changes need review. All changes are saved.");
       return;
     }
     updateSyncStatus("syncing", statusMessage);
-
-    if (cloudRuntime.pushTimer) {
-      clearTimeout(cloudRuntime.pushTimer);
-    }
-
     cloudRuntime.pushTimer = window.setTimeout(() => {
       cloudRuntime.pushTimer = null;
-      void pushToCloud({ reason: "auto" });
+      void synchronizeCloud();
     }, Math.max(100, Number(delayMs) || CLOUD_SYNC_DEBOUNCE_MS));
   }
 
-  async function testCloudConnection() {
-    if (!canUseCloudSync()) {
-      updateSyncStatus("error", "Missing URL or Google sign-in");
-      renderAll();
-      return false;
-    }
+  function testCloudConnection() {
+    return synchronizeCloud();
+  }
 
-    if (cloudRuntime.inFlight) {
-      return false;
-    }
+  function pullFromCloud() {
+    return synchronizeCloud();
+  }
 
-    cloudRuntime.inFlight = true;
-    updateSyncStatus("syncing", "Testing...");
-    renderAll();
+  function pushToCloud() {
+    return synchronizeCloud();
+  }
 
+  function syncIdentity() {
+    return `${state.cloud.webAppUrl}|${state.cloud.userId}`;
+  }
+
+  function syncDataSignature(snapshot) {
+    const data = cloneData(snapshot);
+    ["auth", "cloud", "activeTopTab", "viewMode", "sidebarMode"].forEach(key => delete data[key]);
+    const stable = value => {
+      if (Array.isArray(value)) return value.map(stable);
+      if (!value || typeof value !== "object") return value;
+      return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
+    };
+    return JSON.stringify(stable(data));
+  }
+
+  function readSyncBaseline() {
     try {
-      await requestCloudApi("ping");
-      updateSyncStatus(
-        cloudRuntime.pushBlockedByConflict ? "offline" : "synced",
-        cloudRuntime.pushBlockedByConflict ? CLOUD_CONFLICT_MESSAGE : "Cloud connected",
-      );
-      return true;
-    } catch (error) {
-      updateSyncStatus("error", `Test failed: ${getErrorMessage(error)}`);
-      return false;
-    } finally {
-      cloudRuntime.inFlight = false;
-      renderAll();
+      const cached = JSON.parse(window.localStorage.getItem("discipline_os_sync_base_v1") || "null");
+      return cached?.identity === syncIdentity() && cached.state && typeof cached.state === "object" ? cached : null;
+    } catch (_) { return null; }
+  }
+
+  function writeSyncBaseline(snapshot, updatedAt) {
+    const value = JSON.stringify({ identity: syncIdentity(), updatedAt, state: snapshot });
+    window.localStorage.setItem("discipline_os_sync_base_v1", value);
+    if (window.localStorage.getItem("discipline_os_sync_base_v1") !== value) {
+      throw new Error("The sync backup could not be saved. Your existing data has been kept.");
+    }
+    cloudRuntime.draftBase = { state: cloneData(snapshot), updatedAt };
+  }
+
+  function backupSyncRecovery(local, remote, conflicts = []) {
+    const key = "discipline_os_sync_recovery_v1";
+    try {
+      const previous = JSON.parse(window.localStorage.getItem(key) || "[]");
+      if (!Array.isArray(previous)) throw new Error("Invalid backup history");
+      const value = JSON.stringify([{ savedAt: new Date().toISOString(), local, remote, conflicts }, ...previous].slice(0, 3));
+      window.localStorage.setItem(key, value);
+      if (window.localStorage.getItem(key) !== value) throw new Error("Backup verification failed");
+    } catch (_) {
+      throw new Error("The sync backup could not be saved. Your existing data has been kept.");
     }
   }
 
-  async function pullFromCloud(options = {}) {
-    const { interactive = false, skipIfDirty = false, force = false } = options;
+  function applyCloudSnapshot(snapshot, updatedAt, pending) {
+    const localCloud = { ...state.cloud };
+    const localAuth = { ...state.auth };
+    const localView = { activeTopTab: state.activeTopTab, viewMode: state.viewMode, sidebarMode: state.sidebarMode };
+    state = normalizeState(snapshot);
+    state.cloud = { ...localCloud, lastSyncedAt: updatedAt };
+    state.auth = localAuth;
+    Object.assign(state, localView);
+    if (!state.visibleTopTabs.includes(state.activeTopTab)) state.activeTopTab = state.visibleTopTabs[0];
+    cloudRuntime.hasLocalChanges = pending;
+    saveStateLocally();
+  }
 
-    if (!canUseCloudSync()) {
-      cloudRuntime.lastPullReason = "missing_config";
-      return false;
-    }
-
-    if (cloudRuntime.inFlight) {
-      cloudRuntime.lastPullReason = "busy";
-      return false;
-    }
-
-    if (skipIfDirty && cloudRuntime.hasLocalChanges) {
-      cloudRuntime.lastPullReason = "dirty";
-      return false;
-    }
-
+  async function synchronizeCloud() {
+    if (!canUseCloudSync()) return false;
+    if (cloudRuntime.walletConflict) return false;
+    if (cloudRuntime.inFlight) return false;
     cloudRuntime.inFlight = true;
-    updateSyncStatus("syncing", "Pulling...");
+    if (cloudRuntime.pushTimer) clearTimeout(cloudRuntime.pushTimer);
+    cloudRuntime.pushTimer = null;
+    updateSyncStatus("syncing", "Syncing...");
     renderSyncPanel();
 
     try {
-      const response = await requestCloudApi("sync");
-      const serverState = response.state;
-      const serverUpdatedAt = String(response.updatedAt || "");
+      // Download, reconcile, and conditionally save in one path. A newer server
+      // snapshot is a normal part of syncing between devices, not an error.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const response = await requestCloudApi("sync");
+        const remote = response.state && typeof response.state === "object" ? response.state : null;
+        const remoteUpdatedAt = String(response.updatedAt || "");
+        let local = buildCloudPayload();
+        const drafts = readPendingSyncDrafts();
+        // Each tab has a separate journal, so a stale tab saving its view or
+        // login cannot erase another tab's unacknowledged habit changes.
+        for (const draft of drafts) {
+          if (draft.key === LOCAL_DRAFT_KEY) continue;
+          const combined = window.HabitSyncMerge.merge(draft.base, local, draft.state);
+          if (!combined.ok) {
+            backupSyncRecovery(local, draft.state, combined.conflicts);
+            cloudRuntime.walletConflict = { ...combined, local, remote: draft.state, drafts,
+              baseRemote: remote, updatedAt: remoteUpdatedAt };
+            updateSyncStatus("offline", "Wallet changes need review. All changes are saved.");
+            return false;
+          }
+          if (combined.conflicts.length) backupSyncRecovery(local, draft.state, combined.conflicts);
+          local = combined.state;
+        }
+        const pending = cloudRuntime.hasLocalChanges || drafts.length > 0 || (!state.cloud.lastSyncedAt && hasMeaningfulLocalData());
+        const cachedBase = [cloudRuntime.draftBase, readSyncBaseline()]
+          .find(base => base?.updatedAt === state.cloud.lastSyncedAt);
+        let candidate = local;
+        if (remote) {
+          if (!pending) candidate = remote;
+          else {
+            const base = cachedBase?.state ||
+              (remoteUpdatedAt === state.cloud.lastSyncedAt ? remote : null);
+            if (!window.HabitSyncMerge?.merge) throw new Error("Please reopen the app to finish updating sync.");
+            const result = window.HabitSyncMerge.merge(base, local, remote);
+            if (!result.ok) {
+              backupSyncRecovery(local, remote, result.conflicts);
+              cloudRuntime.walletConflict = { ...result, local, remote, drafts, updatedAt: remoteUpdatedAt };
+              updateSyncStatus("offline", "Wallet changes need review. All changes are saved.");
+              cloudRuntime.lastPullReason = "wallet_review";
+              return false;
+            }
+            candidate = result.state;
+            if (syncDataSignature(candidate) !== syncDataSignature(local) || result.conflicts.length) {
+              backupSyncRecovery(local, remote, result.conflicts);
+            }
+          }
+        }
 
-      if (!serverState || typeof serverState !== "object") {
-        updateSyncStatus("local", "Cloud empty");
-        cloudRuntime.lastPullReason = "empty";
-        return false;
-      }
+        const normalizedCandidate = normalizeState(candidate);
+        const needsUpload = !remote || syncDataSignature(normalizedCandidate) !== syncDataSignature(normalizeState(remote));
+        // Save the actual downloaded base before applying a merge. If an upload
+        // races another device, the next attempt rebases on this exact snapshot.
+        if (remote) writeSyncBaseline(remote, remoteUpdatedAt);
+        applyCloudSnapshot(normalizedCandidate, remoteUpdatedAt, needsUpload);
+        if (!needsUpload) {
+          acknowledgeSyncDrafts(drafts);
+          saveStateLocally();
+          cloudRuntime.lastPullReason = "synced";
+          updateSyncStatus("synced", "Synced");
+          return true;
+        }
 
-      if (!interactive && !state.cloud.lastSyncedAt && (hasMeaningfulLocalData() || cloudRuntime.hasLocalChanges) && !force) {
-        updateSyncStatus("local", "Cloud connected. Push local data first");
-        cloudRuntime.lastPullReason = "needs_manual_push";
-        return false;
-      }
-
-      const isNewer =
-        force ||
-        !state.cloud.lastSyncedAt ||
-        !serverUpdatedAt ||
-        serverUpdatedAt !== state.cloud.lastSyncedAt ||
-        (interactive && cloudRuntime.hasLocalChanges);
-
-      if (!isNewer) {
-        updateSyncStatus("synced", "Already up to date");
-        cloudRuntime.lastPullReason = "up_to_date";
+        const uploadedRevision = cloudRuntime.changeRevision;
+        const uploadedState = buildCloudPayload();
+        let result;
+        try {
+          result = await requestCloudApi("push", {
+            state: uploadedState,
+            expectedUpdatedAt: remoteUpdatedAt,
+            clientUpdatedAt: new Date().toISOString(),
+          });
+        } catch (error) {
+          if (error.code === "SYNC_CONFLICT") continue;
+          throw error;
+        }
+        const updatedAt = String(result.updatedAt || new Date().toISOString());
+        writeSyncBaseline(uploadedState, updatedAt);
+        state.cloud.lastSyncedAt = updatedAt;
+        cloudRuntime.hasLocalChanges = cloudRuntime.changeRevision !== uploadedRevision;
+        acknowledgeSyncDrafts(drafts);
+        saveStateLocally();
+        cloudRuntime.lastPullReason = "synced";
+        if (cloudRuntime.hasLocalChanges) scheduleCloudPush({ delayMs: CLOUD_PUSH_RETRY_MS });
+        else updateSyncStatus("synced", "Synced");
         return true;
       }
-
-      if (cloudRuntime.hasLocalChanges && !interactive) {
-        scheduleCloudPush({ delayMs: CLOUD_PUSH_RETRY_MS, statusMessage: "Sync waiting..." });
-        updateSyncStatus("offline", "Local changes waiting to upload");
-        cloudRuntime.lastPullReason = "local_changes_pending";
-        return false;
-      }
-
-      if (interactive) {
-        const confirmed = window.confirm("Replace local data with cloud data?");
-        if (!confirmed) {
-          updateSyncStatus("local", "Pull cancelled");
-          cloudRuntime.lastPullReason = "cancelled";
-          return false;
-        }
-        backupLocalDataBeforePull();
-      }
-
-      const localCloud = { ...state.cloud };
-      const localAuth = { ...state.auth };
-      state = normalizeState(serverState);
-      state.cloud = {
-        ...state.cloud,
-        enabled: localCloud.enabled,
-        webAppUrl: localCloud.webAppUrl,
-        userId: localCloud.userId,
-        lastSyncedAt: serverUpdatedAt || new Date().toISOString(),
-      };
-      const preservedIdToken = isJwtExpired(localAuth.idToken, 45) ? "" : localAuth.idToken;
-      const preservedSessionToken = isSessionTokenExpiredAt_(localAuth.sessionExpiresAt, 60)
-        ? ""
-        : localAuth.sessionToken || "";
-      state.auth = {
-        ...state.auth,
-        email: preservedIdToken || preservedSessionToken ? localAuth.email || "" : "",
-        idToken: preservedIdToken || "",
-        sessionToken: preservedSessionToken,
-        sessionExpiresAt: preservedSessionToken ? localAuth.sessionExpiresAt || "" : "",
-        signedIn: Boolean(preservedIdToken) || Boolean(preservedSessionToken),
-      };
-
-      cloudRuntime.hasLocalChanges = false;
-      cloudRuntime.pushBlockedByConflict = false;
-      if (cloudRuntime.pushTimer) {
-        clearTimeout(cloudRuntime.pushTimer);
-        cloudRuntime.pushTimer = null;
-      }
-      persistState({ skipCloud: true, silent: true });
-      updateSyncStatus("synced", "Pulled from cloud");
-      cloudRuntime.lastPullReason = "pulled";
-      return true;
+      // A busy second device should cause a short background retry, not a
+      // permanent stop or an unconditional overwrite.
+      scheduleCloudPush({ delayMs: CLOUD_PUSH_RETRY_MS });
+      updateSyncStatus("syncing", "Saving latest changes...");
+      return false;
     } catch (error) {
-      updateSyncStatus("error", `Pull failed: ${getErrorMessage(error)}`);
       cloudRuntime.lastPullReason = "error";
-      return false;
-    } finally {
-      cloudRuntime.inFlight = false;
-      renderAll();
-    }
-  }
-
-  async function pushToCloud(options = {}) {
-    const { reason = "auto" } = options;
-    if (reason === "auto" && cloudRuntime.pushBlockedByConflict) {
-      updateSyncStatus("offline", CLOUD_CONFLICT_MESSAGE);
-      return false;
-    }
-    if (reason === "auto" && !state.cloud.lastSyncedAt) {
-      updateSyncStatus("local", "First sync needs a manual Push or Pull in cloud settings");
-      renderSyncPanel();
-      return false;
-    }
-
-    if (!canUseCloudSync()) {
-      return false;
-    }
-
-    if (cloudRuntime.inFlight) {
-      scheduleCloudPush({ delayMs: CLOUD_PUSH_RETRY_MS, statusMessage: "Sync waiting..." });
-      return false;
-    }
-
-    cloudRuntime.inFlight = true;
-    updateSyncStatus("syncing", reason === "manual" ? "Pushing..." : "Syncing...");
-    renderSyncPanel();
-
-    try {
-      // Compare with the server before uploading an entire snapshot. The server
-      // checks the same timestamp under its lock so a second device cannot race it.
-      const currentCloud = await requestCloudApi("ping");
-      const expectedUpdatedAt = String(currentCloud.updatedAt || "");
-      if (expectedUpdatedAt !== String(state.cloud.lastSyncedAt || "")) {
-        stopCloudPushForConflict();
-        if (reason !== "manual" || !window.confirm(
-          "Cloud data changed on another device. Replace it with this device's data? Changes from the other device will be overwritten.",
-        )) {
-          return false;
-        }
-      }
-
-      const uploadedRevision = cloudRuntime.changeRevision;
-      const response = await requestCloudApi("push", {
-        state: buildCloudPayload(),
-        clientUpdatedAt: new Date().toISOString(),
-        expectedUpdatedAt,
-      });
-
-      state.cloud.lastSyncedAt = String(response.updatedAt || new Date().toISOString());
-      cloudRuntime.pushBlockedByConflict = false;
-      cloudRuntime.hasLocalChanges = cloudRuntime.changeRevision !== uploadedRevision;
-      persistState({ skipCloud: true, silent: true });
+      cloudRuntime.lastError = getErrorMessage(error);
       if (cloudRuntime.hasLocalChanges) {
-        scheduleCloudPush({ delayMs: CLOUD_PUSH_RETRY_MS, statusMessage: "Saving latest changes..." });
-      } else {
-        updateSyncStatus("synced", "Synced");
+        saveStateLocally();
+        scheduleCloudPush({ delayMs: CLOUD_PUSH_ERROR_RETRY_MS });
       }
-      return true;
-    } catch (error) {
-      if (error.code === "SYNC_CONFLICT") {
-        stopCloudPushForConflict();
-        return false;
-      }
-      cloudRuntime.hasLocalChanges = true;
-      saveStateLocally();
-      scheduleCloudPush({ delayMs: CLOUD_PUSH_ERROR_RETRY_MS, statusMessage: "Retrying sync..." });
-      updateSyncStatus("offline", `Push pending: ${getErrorMessage(error)}`);
+      updateSyncStatus("offline", error.code === "AUTH_REQUIRED"
+        ? "Sign in to sync. Changes are saved on this device."
+        : /backup|quota|storage/i.test(cloudRuntime.lastError)
+          ? "A backup could not be saved on this device. Existing data has been kept."
+          : "Saved on this device. Reconnecting...");
       return false;
     } finally {
       cloudRuntime.inFlight = false;
       renderAll();
     }
-  }
-
-  function stopCloudPushForConflict() {
-    cloudRuntime.pushBlockedByConflict = true;
-    cloudRuntime.hasLocalChanges = true;
-    if (cloudRuntime.pushTimer) {
-      clearTimeout(cloudRuntime.pushTimer);
-      cloudRuntime.pushTimer = null;
-    }
-    saveStateLocally();
-    updateSyncStatus("offline", CLOUD_CONFLICT_MESSAGE);
   }
 
   function backupLocalDataBeforePull() {
-    try {
-      const stored = window.localStorage.getItem(LOCAL_PULL_BACKUPS_KEY);
-      const previous = stored ? JSON.parse(stored) : [];
-      if (!Array.isArray(previous)) throw new Error("Invalid backup history");
-      const backups = [{
-        savedAt: new Date().toISOString(),
-        state: buildCloudPayload(),
-      }, ...previous].slice(0, 3);
-      const serialized = JSON.stringify(backups);
-      window.localStorage.setItem(LOCAL_PULL_BACKUPS_KEY, serialized);
-      if (window.localStorage.getItem(LOCAL_PULL_BACKUPS_KEY) !== serialized) {
-        throw new Error("Backup could not be verified");
-      }
-    } catch (_) {
-      throw new Error("Local backup could not be saved. Your data has not been replaced.");
-    }
+    backupSyncRecovery(buildCloudPayload(), null);
   }
 
-  async function requestCloudApi(action, payload = {}) {
+  function reviewWalletSync() {
+    const conflict = cloudRuntime.walletConflict;
+    if (!conflict) return;
+    const useLocal = window.confirm("Both devices changed the wallet, and combining them would lose a purchase or undo. Both copies are backed up.\n\nOK: keep this device's wallet.\nCancel: keep the other device's wallet.\n\nOther habits and workouts will still be combined.");
+    const candidate = cloneData(conflict.candidateState);
+    candidate.amulet = cloneData(useLocal ? conflict.local.amulet : conflict.remote.amulet);
+    writeSyncBaseline(conflict.baseRemote || conflict.remote, conflict.updatedAt);
+    applyCloudSnapshot(candidate, conflict.updatedAt, true);
+    acknowledgeSyncDrafts(conflict.drafts || []);
+    cloudRuntime.walletConflict = null;
+    saveStateLocally();
+    void synchronizeCloud();
+  }
+
+  async function requestCloudApi(action, payload = {}, authRetried = false) {
+    adoptStoredAuth();
     const useSession = hasValidSessionToken_() && action !== "exchange-token";
-    const requestBody = {
-      action,
-      userId: state.cloud.userId,
-      ...payload,
-    };
-    if (useSession) {
-      requestBody.sessionToken = state.auth.sessionToken;
-    } else {
-      requestBody.idToken = state.auth.idToken;
-    }
+    const submittedToken = useSession ? state.auth.sessionToken : state.auth.idToken;
+    const requestBody = { action, userId: state.cloud.userId, ...payload };
+    if (useSession) requestBody.sessionToken = submittedToken;
+    else requestBody.idToken = submittedToken;
 
     let response;
     try {
       response = await fetch(state.cloud.webAppUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8",
-        },
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(requestBody),
       });
-    } catch (error) {
-      throw new Error("Network request failed");
-    }
-
+    } catch (_) { throw new Error("Network request failed"); }
     const text = await response.text();
     let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch (error) {
-      throw new Error("Invalid response from Apps Script");
-    }
-
+    try { parsed = JSON.parse(text); }
+    catch (_) { throw new Error("Invalid response from Apps Script"); }
     if (!response.ok || !parsed || parsed.ok !== true) {
       const message = parsed?.error || `HTTP ${response.status}`;
       if (/unauthorized|session expired/i.test(String(message))) {
-        // Session token is bad or expired — clear it. If we still have a valid ID token,
-        // the next request can fall back to using that. Otherwise the user will be re-prompted.
-        if (useSession) {
-          state.auth.sessionToken = "";
-          state.auth.sessionExpiresAt = "";
-        } else {
-          state.auth.idToken = "";
-          state.auth.sessionToken = "";
-          state.auth.sessionExpiresAt = "";
-          state.auth.email = "";
-          state.auth.signedIn = false;
+        // A slow response for an older credential must not sign out a newer
+        // login or a session received from another open tab.
+        adoptStoredAuth();
+        const stillCurrent = submittedToken && submittedToken ===
+          (useSession ? state.auth.sessionToken : state.auth.idToken);
+        if (stillCurrent) {
+          if (useSession) {
+            state.auth.sessionToken = "";
+            state.auth.sessionExpiresAt = "";
+          } else state.auth.idToken = "";
+          state.auth.signedIn = hasValidSessionToken_() ||
+            Boolean(state.auth.idToken && !isJwtExpired(state.auth.idToken, 45));
+          persistAuthState();
+          renderAuthIndicators();
         }
-        persistState({ skipCloud: true, silent: true });
-        renderAuthIndicators();
+        if (!authRetried) {
+          if (!hasValidSessionToken_() && state.auth.idToken && !isJwtExpired(state.auth.idToken, 45)) {
+            await exchangeIdTokenForSession();
+          }
+          if (canUseCloudSync()) return requestCloudApi(action, payload, true);
+        }
+        if (!canUseCloudSync()) {
+          void initializeGoogleAuth();
+          const error = new Error("Sign in with Google to resume syncing. Your changes are saved on this device.");
+          error.code = "AUTH_REQUIRED";
+          throw error;
+        }
       }
       const error = new Error(message);
       if (parsed?.code) error.code = String(parsed.code);
       throw error;
     }
-
     return parsed;
   }
 
@@ -2608,7 +2542,9 @@
   }
 
   function hasMeaningfulLocalData() {
-    return getTotalCompletions() > 0 || Object.keys(state.dayNotes).length > 0 || window.Amulet.hasData(state.amulet);
+    return getTotalCompletions() > 0 || Object.keys(state.dayNotes).length > 0 || window.Amulet.hasData(state.amulet)
+      || [state.exercise.meals, state.exercise.workouts, state.exercise.weights, state.caffeine.entries]
+        .some(records => Object.values(records).some(value => Array.isArray(value) ? value.length > 0 : value != null));
   }
 
   function getTotalCompletions() {
@@ -2626,6 +2562,7 @@
   function updateSyncStatus(status, message) {
     cloudRuntime.status = status;
     cloudRuntime.message = message;
+    if (refs.syncBadge && refs.syncStatusText) updateSyncIndicators();
   }
 
   function updateSyncIndicators() {
@@ -2634,6 +2571,18 @@
 
     refs.syncStatusText.textContent = cloudRuntime.message;
     refs.syncStatusText.className = `sync-badge ${cloudRuntime.status}`;
+
+    let review = byId("walletSyncReview");
+    if (cloudRuntime.walletConflict && !review) {
+      review = document.createElement("button");
+      review.id = "walletSyncReview";
+      review.type = "button";
+      review.className = "btn ghost small";
+      review.textContent = "Review wallet changes";
+      review.addEventListener("click", reviewWalletSync);
+      refs.syncBadge.after(review);
+    }
+    if (review) review.hidden = !cloudRuntime.walletConflict;
   }
 
   function normalizeState(raw) {
@@ -2694,28 +2643,7 @@
     next.cloud.userId = normalizeCloudUserId(next.cloud.userId);
     next.cloud.lastSyncedAt = String(next.cloud.lastSyncedAt || "");
 
-    next.auth = {
-      ...template.auth,
-      ...(next.auth && typeof next.auth === "object" ? next.auth : {}),
-    };
-    next.auth.email = String(next.auth.email || "").toLowerCase();
-    next.auth.idToken = String(next.auth.idToken || "");
-    next.auth.sessionToken = String(next.auth.sessionToken || "");
-    next.auth.sessionExpiresAt = String(next.auth.sessionExpiresAt || "");
-    if (isJwtExpired(next.auth.idToken, 45)) {
-      next.auth.idToken = "";
-    }
-    if (isSessionTokenExpiredAt_(next.auth.sessionExpiresAt, 60)) {
-      next.auth.sessionToken = "";
-      next.auth.sessionExpiresAt = "";
-    }
-    if (AUTH_CONFIG.allowedEmail && next.auth.email && next.auth.email !== AUTH_CONFIG.allowedEmail) {
-      next.auth.idToken = "";
-      next.auth.sessionToken = "";
-      next.auth.sessionExpiresAt = "";
-      next.auth.email = "";
-    }
-    next.auth.signedIn = Boolean(next.auth.idToken) || Boolean(next.auth.sessionToken);
+    next.auth = normalizeAuthState(next.auth);
 
     return next;
   }
@@ -2808,27 +2736,77 @@
 
   function readLocalPendingChanges() {
     try {
-      return window.localStorage.getItem(LOCAL_PENDING_KEY) === "1"
-        && Boolean(window.localStorage.getItem(LOCAL_STATE_KEY));
+      const saved = JSON.parse(window.localStorage.getItem(LOCAL_STATE_KEY) || "null");
+      if (saved && window.localStorage.getItem(LOCAL_PENDING_KEY) === "1") return true;
+      const url = normalizeCloudUrl(saved?.cloud?.webAppUrl || CLOUD_BOOT_CONFIG.webAppUrl);
+      const user = normalizeCloudUserId(saved?.cloud?.userId || CLOUD_BOOT_CONFIG.userId);
+      return readPendingSyncDrafts(`${url}|${user}`).length > 0;
     } catch (_) {
       return false;
     }
   }
 
   function loadPersistedState() {
-    if (typeof window === "undefined" || !window.localStorage) {
-      return null;
-    }
-
+    if (typeof window === "undefined" || !window.localStorage) return null;
     try {
       const raw = window.localStorage.getItem(LOCAL_STATE_KEY);
-      if (!raw) {
-        return null;
-      }
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" ? parsed : null;
-    } catch (error) {
+      const parsed = raw ? JSON.parse(raw) : null;
+      const saved = parsed && typeof parsed === "object" ? parsed : null;
+      const authCache = readAuthCache();
+      // Authentication has its own record so an older tab cannot replace it
+      // when saving its habit snapshot.
+      return authCache ? { ...(saved || {}), auth: authCache.auth } : saved;
+    } catch (_) {
       return null;
+    }
+  }
+
+  function readPendingSyncDrafts(identity = syncIdentity()) {
+    const result = [];
+    try {
+      const storage = window.localStorage;
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (!key?.startsWith("discipline_os_draft_v1_")) continue;
+        const raw = storage.getItem(key);
+        let draft;
+        try { draft = JSON.parse(raw || "null"); } catch (_) { continue; }
+        if (draft?.identity === identity && draft.state && typeof draft.state === "object") {
+          result.push({ key, raw, ...draft });
+        }
+      }
+    } catch (_) { /* The main cached state remains available if storage is blocked. */ }
+    return result;
+  }
+
+  function savePendingSyncDraft() {
+    const storage = window.localStorage;
+    if (!cloudRuntime.hasLocalChanges) {
+      storage.removeItem(LOCAL_DRAFT_KEY);
+      return;
+    }
+    const payload = buildCloudPayload();
+    // A reload can recover an older tab's journal directly, without adding an
+    // identical orphan journal every time the offline app is reopened.
+    if (!cloudRuntime.changeRevision && !storage.getItem(LOCAL_DRAFT_KEY) &&
+        readPendingSyncDrafts().some(draft => syncDataSignature(draft.state) === syncDataSignature(payload))) return;
+    const cached = cloudRuntime.draftBase || readSyncBaseline();
+    const base = cached?.updatedAt === state.cloud.lastSyncedAt ? cached : null;
+    const raw = JSON.stringify({
+      identity: syncIdentity(),
+      state: payload,
+      base: base?.state || null,
+      updatedAt: base?.updatedAt || state.cloud.lastSyncedAt,
+    });
+    storage.setItem(LOCAL_DRAFT_KEY, raw);
+  }
+
+  function acknowledgeSyncDrafts(drafts) {
+    const storage = window.localStorage;
+    for (const draft of drafts) {
+      // Another open tab may have edited its draft during this upload. Only
+      // remove the exact revision that the server has just acknowledged.
+      if (storage.getItem(draft.key) === draft.raw) storage.removeItem(draft.key);
     }
   }
 
@@ -2838,12 +2816,139 @@
     }
 
     try {
+      savePendingSyncDraft();
       window.localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(state));
-      if (cloudRuntime.hasLocalChanges) window.localStorage.setItem(LOCAL_PENDING_KEY, "1");
+      if (cloudRuntime.hasLocalChanges || readPendingSyncDrafts().length) window.localStorage.setItem(LOCAL_PENDING_KEY, "1");
       else window.localStorage.removeItem(LOCAL_PENDING_KEY);
     } catch (error) {
       // Ignore storage failures (private mode / quota).
     }
+  }
+
+  function normalizeAuthState(raw) {
+    const auth = raw && typeof raw === "object" ? raw : {};
+    const next = {
+      email: String(auth.email || "").toLowerCase(),
+      idToken: String(auth.idToken || ""),
+      sessionToken: String(auth.sessionToken || ""),
+      sessionExpiresAt: String(auth.sessionExpiresAt || ""),
+      signedIn: false,
+    };
+    if (isJwtExpired(next.idToken, 45)) next.idToken = "";
+    if (isSessionTokenExpiredAt_(next.sessionExpiresAt, 60)) {
+      next.sessionToken = "";
+      next.sessionExpiresAt = "";
+    }
+    if (AUTH_CONFIG.allowedEmail && next.email && next.email !== AUTH_CONFIG.allowedEmail) {
+      next.email = next.idToken = next.sessionToken = next.sessionExpiresAt = "";
+    }
+    next.signedIn = Boolean(next.idToken || next.sessionToken);
+    return next;
+  }
+
+  function readAuthCache() {
+    try {
+      const raw = window.localStorage.getItem(LOCAL_AUTH_KEY);
+      if (!raw) return null;
+      const cached = JSON.parse(raw);
+      if (!cached || typeof cached !== "object" || !cached.auth || !cached.version) return null;
+      return { ...cached, auth: normalizeAuthState(cached.auth) };
+    } catch (_) { return null; }
+  }
+
+  function persistAuthState({ signedOut = false } = {}) {
+    googleAuthRuntime.explicitSignedOut = signedOut;
+    const version = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    googleAuthRuntime.authVersion = version;
+    try {
+      window.localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify({
+        version, signedOut, auth: state.auth,
+      }));
+    } catch (_) {
+      // A full/private storage area must not make a later read restore an older
+      // cached credential over the fresh one still available in this tab.
+      googleAuthRuntime.authVersion = readAuthCache()?.version || "";
+    }
+    persistState({ skipCloud: true, silent: true });
+  }
+
+  function adoptStoredAuth({ resume = false, render = false } = {}) {
+    const cached = readAuthCache();
+    if (!cached || cached.version === googleAuthRuntime.authVersion) return false;
+    state.auth = cached.auth;
+    googleAuthRuntime.authVersion = cached.version;
+    googleAuthRuntime.explicitSignedOut = Boolean(cached.signedOut);
+    googleAuthRuntime.authEpoch += 1;
+    googleAuthRuntime.promptShown = false;
+    if (googleAuthRuntime.exchangeTimer) clearTimeout(googleAuthRuntime.exchangeTimer);
+    googleAuthRuntime.exchangeTimer = null;
+    googleAuthRuntime.nextExchangeAt = 0;
+    googleAuthRuntime.exchangeFailures = 0;
+    // Only adopt credentials. Habit records and pending changes belong to this
+    // tab until the regular sync process has reconciled them.
+    if (render) {
+      renderAuthIndicators();
+      renderGoogleSignInButton();
+    }
+    if (resume && canUseCloudSync()) void bootstrapCloudSyncNow();
+    return true;
+  }
+
+  function installAuthRecoveryHooks() {
+    if (googleAuthRuntime.hooksBound) return;
+    googleAuthRuntime.hooksBound = true;
+    if (readAuthCache()) adoptStoredAuth();
+    else persistAuthState();
+    window.addEventListener("storage", (event) => {
+      if (event.key !== LOCAL_AUTH_KEY) return;
+      if (adoptStoredAuth({ render: true, resume: true }) && googleAuthRuntime.explicitSignedOut) {
+        updateSyncStatus("local", "Signed out");
+      }
+    });
+    window.addEventListener("online", () => { void recoverCloudAuthentication(); });
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) void recoverCloudAuthentication();
+    });
+    window.setInterval(() => {
+      if (!document.hidden && !hasValidSessionToken_() && !googleAuthRuntime.explicitSignedOut) {
+        void recoverCloudAuthentication();
+      }
+    }, 60000);
+  }
+
+  async function recoverCloudAuthentication() {
+    adoptStoredAuth({ render: true });
+    if (googleAuthRuntime.explicitSignedOut) return false;
+    if (!hasValidSessionToken_() && state.auth.idToken && !isJwtExpired(state.auth.idToken, 45)) {
+      await exchangeIdTokenForSession();
+    }
+    if (canUseCloudSync()) {
+      void bootstrapCloudSyncNow();
+      return true;
+    }
+    void initializeGoogleAuth();
+    return false;
+  }
+
+  function promptGoogleRecovery() {
+    if (googleAuthRuntime.explicitSignedOut || googleAuthRuntime.promptShown ||
+        hasValidSessionToken_() || (state.auth.idToken && !isJwtExpired(state.auth.idToken, 45))) return;
+    const identity = googleIdentity();
+    if (!identity || !googleAuthRuntime.initialized) return;
+    googleAuthRuntime.promptShown = true;
+    try { identity.prompt(); } catch (_) { /* The visible Google button is also available. */ }
+  }
+
+  function scheduleSessionExchangeRetry() {
+    if (googleAuthRuntime.explicitSignedOut || !state.auth.idToken || isJwtExpired(state.auth.idToken, 45)) return;
+    googleAuthRuntime.exchangeFailures += 1;
+    const delay = Math.min(300000, 1000 * 2 ** Math.min(googleAuthRuntime.exchangeFailures, 9));
+    googleAuthRuntime.nextExchangeAt = Date.now() + delay;
+    if (googleAuthRuntime.exchangeTimer) clearTimeout(googleAuthRuntime.exchangeTimer);
+    googleAuthRuntime.exchangeTimer = window.setTimeout(() => {
+      googleAuthRuntime.exchangeTimer = null;
+      void exchangeIdTokenForSession();
+    }, delay);
   }
 
   function googleIdentity() {
@@ -2859,6 +2964,8 @@
   }
 
   function openGoogleSignIn() {
+    googleAuthRuntime.explicitSignedOut = false;
+    googleAuthRuntime.promptShown = true;
     openSidebar();
     (refs.drawerAccount || refs.googleSignInButton)?.scrollIntoView?.({
       block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
@@ -2868,13 +2975,18 @@
 
   function initializeGoogleAuth({ retry = false } = {}) {
     renderAuthIndicators();
+    if (!hasValidSessionToken_() && state.auth.idToken && !isJwtExpired(state.auth.idToken, 45)) {
+      void exchangeIdTokenForSession();
+    }
     if (!AUTH_CONFIG.googleClientId) {
       // The Account status already explains missing configuration.
       setGoogleSignInError("");
       return Promise.resolve(false);
     }
+    installAuthRecoveryHooks();
     if (googleAuthRuntime.initialized && googleIdentity()) {
       renderGoogleSignInButton();
+      promptGoogleRecovery();
       return Promise.resolve(true);
     }
     if (googleAuthRuntime.pending) return googleAuthRuntime.pending;
@@ -2899,10 +3011,7 @@
       });
       googleAuthRuntime.initialized = true;
       renderGoogleSignInButton();
-      // One Tap is an optional automatic convenience, never a click handler.
-      if (!hasValidSessionToken_() && (!state.auth?.idToken || isJwtExpired(state.auth.idToken, 45))) {
-        try { identity.prompt(); } catch (_) { /* The actual Google button remains available. */ }
-      }
+      promptGoogleRecovery();
       return true;
     }).catch(() => {
       setGoogleSignInError("Google sign-in couldn't load. Check your connection and try again.");
@@ -2971,71 +3080,101 @@
     }
     setGoogleSignInError("");
     if (AUTH_CONFIG.allowedEmail && email !== AUTH_CONFIG.allowedEmail) {
-      signOutGoogle();
       updateSyncStatus("error", "Wrong Google account");
       showToast("Please sign in with your allowed Google account.");
       renderAll();
       return;
     }
-
-    if (state.auth.idToken !== idToken) {
+    adoptStoredAuth();
+    // Refreshing a Google credential must not discard an existing durable
+    // session before its replacement has actually reached this device.
+    if (state.auth.email !== email) {
       state.auth.sessionToken = "";
       state.auth.sessionExpiresAt = "";
     }
+    googleAuthRuntime.authEpoch += 1;
+    googleAuthRuntime.explicitSignedOut = false;
+    googleAuthRuntime.promptShown = false;
+    googleAuthRuntime.exchangeFailures = 0;
+    googleAuthRuntime.nextExchangeAt = 0;
     state.auth.idToken = idToken;
     state.auth.email = email;
     state.auth.signedIn = true;
-    persistState({ skipCloud: true, silent: true });
+    persistAuthState();
     renderAuthIndicators();
-
-    // Exchange the short-lived Google ID token for a 90-day session token.
-    // We run this in the background; even if it fails we can still use the ID token for the next hour.
-    void exchangeIdTokenForSession();
-
-    if (canUseCloudSync()) {
-      void bootstrapCloudSyncNow();
-    }
+    void exchangeIdTokenForSession({ force: true });
+    if (canUseCloudSync()) void bootstrapCloudSyncNow();
   }
 
-  async function exchangeIdTokenForSession() {
-    if (!state.auth.idToken || !state.cloud.webAppUrl) {
-      return;
-    }
+  async function exchangeIdTokenForSession({ force = false } = {}) {
+    adoptStoredAuth();
+    if (googleAuthRuntime.explicitSignedOut || !state.auth.idToken ||
+        isJwtExpired(state.auth.idToken, 45) || !state.cloud.webAppUrl) return false;
+    if (!force && hasValidSessionToken_()) return true;
     const exchangedIdToken = state.auth.idToken;
-    try {
-      const response = await fetch(state.cloud.webAppUrl, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-          action: "exchange-token",
-          idToken: state.auth.idToken,
-          userId: state.cloud.userId,
-        }),
-      });
-      if (!response.ok) return;
-      const data = await response.json();
-      if (data && data.ok && data.sessionToken && state.auth.idToken === exchangedIdToken) {
-        state.auth.sessionToken = String(data.sessionToken);
-        state.auth.sessionExpiresAt = String(data.expiresAt || "");
-        state.auth.signedIn = true;
-        persistState({ skipCloud: true, silent: true });
-        renderAuthIndicators();
-      }
-    } catch (error) {
-      // Silent fail — ID token still works for the next hour.
+    if (googleAuthRuntime.exchangePending) {
+      if (googleAuthRuntime.exchangeId === exchangedIdToken) return googleAuthRuntime.exchangePending;
+      await googleAuthRuntime.exchangePending;
+      return exchangeIdTokenForSession({ force });
     }
+    if (Date.now() < googleAuthRuntime.nextExchangeAt) return false;
+    const epoch = googleAuthRuntime.authEpoch;
+    googleAuthRuntime.exchangeId = exchangedIdToken;
+    const pending = (async () => {
+      try {
+        const response = await fetch(state.cloud.webAppUrl, {
+          method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "exchange-token", idToken: exchangedIdToken, userId: state.cloud.userId }),
+        });
+        const data = await response.json();
+        adoptStoredAuth();
+        if (googleAuthRuntime.authEpoch !== epoch || state.auth.idToken !== exchangedIdToken ||
+            googleAuthRuntime.explicitSignedOut) return false;
+        if (!response.ok || !data?.ok || !data.sessionToken || isSessionTokenExpiredAt_(data.expiresAt, 60)) {
+          if (/unauthorized|session expired/i.test(String(data?.error || ""))) {
+            state.auth.idToken = "";
+            state.auth.signedIn = hasValidSessionToken_();
+            persistAuthState();
+            renderAuthIndicators();
+            if (!state.auth.signedIn) void initializeGoogleAuth();
+          } else scheduleSessionExchangeRetry();
+          return false;
+        }
+        state.auth.sessionToken = String(data.sessionToken);
+        state.auth.sessionExpiresAt = String(data.expiresAt);
+        state.auth.signedIn = true;
+        googleAuthRuntime.exchangeFailures = 0;
+        googleAuthRuntime.nextExchangeAt = 0;
+        if (googleAuthRuntime.exchangeTimer) clearTimeout(googleAuthRuntime.exchangeTimer);
+        googleAuthRuntime.exchangeTimer = null;
+        persistAuthState();
+        renderAuthIndicators();
+        return true;
+      } catch (_) {
+        if (googleAuthRuntime.authEpoch === epoch && state.auth.idToken === exchangedIdToken &&
+            !googleAuthRuntime.explicitSignedOut) scheduleSessionExchangeRetry();
+        return false;
+      } finally {
+        if (googleAuthRuntime.exchangePending === pending) {
+          googleAuthRuntime.exchangePending = null;
+          googleAuthRuntime.exchangeId = "";
+        }
+      }
+    })();
+    googleAuthRuntime.exchangePending = pending;
+    return pending;
   }
 
   function signOutGoogle() {
-    state.auth.idToken = "";
-    state.auth.sessionToken = "";
-    state.auth.sessionExpiresAt = "";
-    state.auth.email = "";
-    state.auth.signedIn = false;
-    if (window.google && window.google.accounts && window.google.accounts.id) {
-      try { window.google.accounts.id.disableAutoSelect(); } catch (_) { /* Local sign-out still succeeds. */ }
+    googleAuthRuntime.authEpoch += 1;
+    googleAuthRuntime.promptShown = false;
+    if (googleAuthRuntime.exchangeTimer) clearTimeout(googleAuthRuntime.exchangeTimer);
+    googleAuthRuntime.exchangeTimer = null;
+    state.auth = { email: "", idToken: "", sessionToken: "", sessionExpiresAt: "", signedIn: false };
+    if (googleIdentity()) {
+      try { googleIdentity().disableAutoSelect(); } catch (_) { /* Local sign-out still succeeds. */ }
     }
-    persistState({ skipCloud: true, silent: true });
+    persistAuthState({ signedOut: true });
     renderAuthIndicators();
     renderGoogleSignInButton();
     updateSyncStatus("local", "Signed out");
@@ -3043,6 +3182,7 @@
   }
 
   function renderAuthIndicators() {
+    adoptStoredAuth();
     const hadToken = Boolean(state.auth?.idToken) || Boolean(state.auth?.sessionToken);
     const idTokenValid =
       Boolean(state.auth?.idToken) && !isJwtExpired(state.auth.idToken, 45);
@@ -3057,10 +3197,7 @@
         state.auth.sessionToken = "";
         state.auth.sessionExpiresAt = "";
       }
-      if (!signedIn && hadToken) {
-        state.auth.email = "";
-        saveStateLocally();
-      }
+      if (!signedIn && hadToken) persistAuthState();
     }
     const email = signedIn ? state.auth?.email || "" : "";
     const text = signedIn ? `Signed in${email ? `: ${email}` : ""}` : "Not signed in";
