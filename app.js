@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const APP_VERSION = "20261022a";
+  const APP_VERSION = "20261024a";
   const WEEK_STARTS_ON = 1;
   const CLOUD_SYNC_DEBOUNCE_MS = 450;
   const CLOUD_PULL_INTERVAL_MS = 45000;

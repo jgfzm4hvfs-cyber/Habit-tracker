@@ -150,7 +150,17 @@
 .am-field-note { color: var(--am-muted); font-size: 11px; line-height: 1.5; }
 .am-manage-list { display: grid; overflow: hidden; margin: 12px 0 16px; border: 1px solid var(--am-line); border-radius: 12px; }
 .am-manage-habit { display: flex; align-items: center; gap: 12px; min-height: 68px; width: 100%; padding: 12px; border: 0; border-radius: 0; color: var(--am-ink); background: white; text-align: left; }
-.am-manage-habit + .am-manage-habit { border-top: 1px solid #edf0f4; }
+.am-manage-row + .am-manage-row { border-top: 1px solid #edf0f4; }
+.am-manage-toolbar { display: flex; justify-content: flex-end; }
+.am-manage-row { min-width: 0; background: white; }
+.am-manage-row.is-reordering { display: flex; align-items: center; gap: 8px; min-height: 76px; padding: 10px 4px 10px 12px; }
+.am-manage-row .am-habit-copy { min-width: 0; flex: 1; }
+.am-manage-row .am-habit-name { overflow-wrap: anywhere; }
+.am-order-controls { display: flex; flex: 0 0 auto; gap: 0; }
+.am-order-controls .am-icon-button { color: var(--am-blue); background: #f3f6fb; border-radius: 8px; }
+.am-order-controls .am-icon-button + .am-icon-button { margin-left: 2px; }
+.am-order-controls .am-icon-button:disabled { opacity: .25; background: transparent; }
+.am-manage-empty { padding: 14px; }
 .am-manage-habit:active { background: #eff5ff; }
 .am-manage-edit { display: inline-grid; place-items: center; flex: 0 0 26px; color: #788396; }
 .am-manage-edit svg { width: 16px; height: 16px; }

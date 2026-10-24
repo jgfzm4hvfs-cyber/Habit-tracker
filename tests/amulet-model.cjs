@@ -268,6 +268,60 @@ test('v1 migration preserves later effective edits and never reseeds an empty li
   assert.equal(normalize(normalize(s)).habits.length, 0);
 });
 
+test('custom ordering survives normalization and reload without changing definitions or wallet', () => {
+  const s=normalize(normalize(undefined));
+  s.ledger=[earned('read-today',{habitId:'am_read'})];
+  const originalHabits=clone(s.habits), originalLedger=clone(s.ledger);
+  assert.equal(m.moveHabit(s,'am_read',-1),true);
+  const reloaded=normalize(JSON.parse(JSON.stringify(s)));
+  assert.equal(m.orderedHabits(reloaded)[0].id,'am_read');
+  assert.equal(hasData(reloaded),true);
+  assert.deepEqual(clone(reloaded.habits),originalHabits);
+  assert.deepEqual(clone(reloaded.ledger),originalLedger);
+  assert.equal(m.ledgerView(reloaded).balance,1000);
+  assert.equal(m.ledgerView(reloaded).completions.has('am_read|'+TODAY),true);
+});
+test('daily checklists use one order while filtering weekday habits', () => {
+  const s=normalize(undefined);
+  assert.equal(m.moveHabit(s,'am_work',-1),true);
+  assert.equal(m.moveHabit(s,'am_work',-1),true);
+  const monday=m.orderedHabits(s).filter(h=>m.isScheduled(h,'2026-10-12'));
+  const saturday=m.orderedHabits(s).filter(h=>m.isScheduled(h,TODAY));
+  assert.equal(monday[0].id,'am_work');
+  assert.equal(saturday[0].id,'am_wake');
+  assert.deepEqual(Array.from(saturday,h=>h.id),Array.from(monday.filter(h=>m.isScheduled(h,TODAY)),h=>h.id));
+});
+test('new habits append to an existing custom order; deleted and duplicate ids are harmless', () => {
+  const s=normalize(undefined);
+  const first=s.habits[0], last=s.habits.at(-1);
+  s.habitOrder={ids:[last.id,'missing',last.id,first.id],updatedAt:FIXED};
+  const normalized=normalize(s);
+  assert.deepEqual(Array.from(normalized.habitOrder.ids),[last.id,first.id]);
+  normalized.habits.push({...clone(normalized.habits[0]),id:'new_habit'});
+  assert.equal(m.orderedHabits(normalized)[0].id,last.id);
+  assert.equal(m.orderedHabits(normalized).at(-1).id,'new_habit');
+  assert.deepEqual(clone(normalize(normalized)),clone(normalized));
+});
+test('moving active habits skips archived rows and never mutates history', () => {
+  const s=normalize(undefined);
+  s.habits[1].archivedOn=TODAY;
+  const archived=clone(s.habits[1]);
+  assert.equal(m.moveHabit(s,'am_work',-1),true);
+  assert.deepEqual(Array.from(m.orderedHabits(s).filter(h=>!h.archivedOn),h=>h.id).slice(0,2),['am_work','am_wake']);
+  assert.deepEqual(clone(s.habits[1]),archived);
+  assert.equal(m.moveHabit(s,'am_read',-1),false);
+});
+test('invalid moves and list boundaries are no-ops; successive real moves advance the clock', () => {
+  const s=normalize(undefined), before=clone(s);
+  for(const [id,delta] of [['am_wake',-1],['am_meditate',1],['missing',1],['am_read',0],['am_read',2]]) assert.equal(m.moveHabit(s,id,delta),false);
+  assert.deepEqual(clone(s),before);
+  assert.equal(m.moveHabit(s,'am_read',-1),true);
+  const first=s.habitOrder.updatedAt;
+  assert.equal(m.moveHabit(s,'am_read',1),true);
+  assert.ok(Date.parse(s.habitOrder.updatedAt)>Date.parse(first));
+  assert.deepEqual(Array.from(m.orderedHabits(s),h=>h.id),Array.from(before.habits,h=>h.id));
+});
+
 let failed=0;
 for (const [name, fn] of tests) {
   try { fn(); console.log('PASS',name); }

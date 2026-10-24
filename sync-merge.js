@@ -48,7 +48,27 @@
   function recordConflict(ctx, path, kind, local, remote, resolution) {
     ctx.conflicts.push({ path: pathText(path), kind, local: describe(local), remote: describe(remote), resolution });
   }
+  function savedHabitOrder(value) {
+    return object(value) && ((Array.isArray(value.ids) && value.ids.length > 0) || time(value.updatedAt) !== null);
+  }
+  function preferredHabitOrder(local, remote) {
+    const lt = time(local.updatedAt) ?? 0, rt = time(remote.updatedAt) ?? 0;
+    const orderKey = value => JSON.stringify([Array.isArray(value.ids) ? value.ids : [], typeof value.updatedAt === "string" ? value.updatedAt : ""]);
+    return lt !== rt ? (lt > rt ? "local" : "remote") : (orderKey(local) >= orderKey(remote) ? "local" : "remote");
+  }
+  function preserveLegacyHabitOrder(base, local, remote) {
+    // Old app versions omit the field; the empty unstamped default also carries
+    // no reorder. Preserve a saved order before parent-level ancestor shortcuts
+    // can select the legacy snapshot wholesale. The ancestor stays untouched.
+    const orders = [local, remote, base].filter(object).map(snapshot => snapshot.amulet?.habitOrder).filter(savedHabitOrder);
+    if (!orders.length) return;
+    const latest = orders.reduce((left, right) => preferredHabitOrder(left, right) === "local" ? left : right);
+    for (const snapshot of [local, remote]) {
+      if (object(snapshot.amulet) && !savedHabitOrder(snapshot.amulet.habitOrder)) snapshot.amulet.habitOrder = copy(latest);
+    }
+  }
   function mergeValue(base, local, remote, path, ctx, inherited = "local") {
+    const habitOrder = path.length === 2 && path[0] === "amulet" && path[1] === "habitOrder";
     if (equal(local, remote)) return copy(local);
     if (base !== ABSENT && equal(local, base)) return copy(remote);
     if (base !== ABSENT && equal(remote, base)) return copy(local);
@@ -71,6 +91,14 @@
       return copy(value);
     }
     const preferred = newerSide(local, remote, inherited, path);
+    if (habitOrder && object(local) && object(remote)) {
+      // A reordered sequence is one operation. Merging its fields separately can
+      // combine the newest clock with an older sequence, particularly when a
+      // user intentionally moves the list back to its original order.
+      const side = preferredHabitOrder(local, remote);
+      recordConflict(ctx, path, "concurrent-edit", local, remote, side);
+      return copy(side === "remote" ? remote : local);
+    }
     if (object(local) && object(remote)) {
       const result = {};
       const allKeys = new Set([...keys(remote), ...keys(local), ...keys(base)]);
@@ -249,6 +277,7 @@
     if (!object(local) || !object(remote) || (base != null && !object(base))) return { ok: false, state: null, code: "INVALID_SNAPSHOT", conflicts: [] };
     const ctx = { conflicts: [], aliases: {}, unsafeAliasIds: [] };
     const b = base == null ? ABSENT : copy(base), l = copy(local), r = copy(remote);
+    preserveLegacyHabitOrder(b, l, r);
     const sources = canonicalLedgers(b, l, r, ctx);
     // Local credentials/configuration must never enter a recovery journal.
     for (const snapshot of [b, l, r]) if (snapshot !== ABSENT) {

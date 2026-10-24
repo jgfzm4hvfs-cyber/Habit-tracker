@@ -142,4 +142,79 @@ test('independent duplicate wishlist purchases need explicit financial review',(
   l.amulet.ledger.push(event('pa','purchase',-2000,{itemId:'one-wish'})); r.amulet.ledger.push(event('pb','purchase',-2000,{itemId:'one-wish'}));
   const result=merge(b,l,r); assert.equal(result.ok,false); assert.equal(result.candidateState.amulet.ledger.length,3); assert.ok(result.lostEventIds.length);
 });
+test('Amulet reorder survives concurrent completion without changing wallet or habit definitions',()=>{
+  const b=state(),l=copy(b),r=copy(b);
+  const ids=b.amulet.habits.map(h=>h.id).reverse();
+  l.amulet.habitOrder={ids,updatedAt:`${day}T10:00:00.000Z`};
+  r.amulet.ledger.push(earn('earned-while-reordering'));
+  const result=safe(b,l,r);
+  assert.deepEqual(result.state.amulet.habitOrder.ids,ids);
+  assert.deepEqual(result.state.amulet.habits,copy(A.normalize(b.amulet)).habits);
+  assert.equal(wallet(result.state),1000);
+  assert.equal(result.state.amulet.ledger[0].id,'earned-while-reordering');
+});
+test('Amulet reorder preserves concurrent habit edits and newly added habits',()=>{
+  const b=state(),l=copy(b),r=copy(b);
+  const ids=b.amulet.habits.map(h=>h.id).reverse();
+  l.amulet.habitOrder={ids,updatedAt:`${day}T10:00:00.000Z`};
+  const habit=r.amulet.habits.find(h=>h.id==='am_read');
+  habit.versions.push({from:day,name:'Read every morning',rewardOre:1500,days:[0,1,2,3,4,5,6],targetPerWeek:7});
+  r.amulet.habits.push({...copy(habit),id:'am_stretch',name:'Stretch',versions:[{from:day,name:'Stretch',rewardOre:1000,days:[0,1,2,3,4,5,6],targetPerWeek:7}]});
+  const result=safe(b,l,r);
+  assert.deepEqual(result.state.amulet.habitOrder.ids,ids);
+  assert.equal(result.state.amulet.habits.find(h=>h.id==='am_read').name,'Read every morning');
+  assert.equal(result.state.amulet.habits.find(h=>h.id==='am_stretch').name,'Stretch');
+  assert.equal(result.state.amulet.habits.length,b.amulet.habits.length+1);
+});
+test('newer concurrent reorder wins as a whole sequence regardless of merge direction',()=>{
+  const b=state(); const ids=b.amulet.habits.map(h=>h.id);
+  b.amulet.habitOrder={ids:copy(ids),updatedAt:`${day}T09:00:00.000Z`};
+  const l=copy(b),r=copy(b);
+  l.amulet.habitOrder={ids:copy(ids).reverse(),updatedAt:`${day}T10:00:00.000Z`};
+  r.amulet.habitOrder={ids:[ids[1],ids[0],...ids.slice(2)],updatedAt:`${day}T11:00:00.000Z`};
+  assert.deepEqual(safe(b,l,r).state.amulet.habitOrder,r.amulet.habitOrder);
+  assert.deepEqual(safe(b,r,l).state.amulet.habitOrder,r.amulet.habitOrder);
+});
+test('newer reorder back to ancestor sequence does not inherit an older changed sequence',()=>{
+  const b=state(); const ids=b.amulet.habits.map(h=>h.id);
+  b.amulet.habitOrder={ids:copy(ids),updatedAt:`${day}T09:00:00.000Z`};
+  const l=copy(b),r=copy(b);
+  l.amulet.habitOrder={ids:copy(ids).reverse(),updatedAt:`${day}T10:00:00.000Z`};
+  r.amulet.habitOrder={ids:copy(ids),updatedAt:`${day}T11:00:00.000Z`};
+  assert.deepEqual(safe(b,l,r).state.amulet.habitOrder,r.amulet.habitOrder);
+  assert.deepEqual(safe(b,r,l).state.amulet.habitOrder,r.amulet.habitOrder);
+});
+test('equal-clock simultaneous Amulet reorders converge on one complete sequence',()=>{
+  const b=state(),l=copy(b),r=copy(b); const ids=b.amulet.habits.map(h=>h.id);
+  l.amulet.habitOrder={ids:copy(ids).reverse(),updatedAt:`${day}T10:00:00.000Z`};
+  r.amulet.habitOrder={ids:[ids[1],ids[0],...ids.slice(2)],updatedAt:`${day}T10:00:00.000Z`};
+  const forward=safe(b,l,r).state.amulet.habitOrder;
+  const backward=safe(b,r,l).state.amulet.habitOrder;
+  assert.deepEqual(forward,backward);
+  assert.ok(JSON.stringify(forward)===JSON.stringify(l.amulet.habitOrder)||JSON.stringify(forward)===JSON.stringify(r.amulet.habitOrder));
+});
+test('first sync without an ancestor keeps the latest complete Amulet reorder',()=>{
+  const l=state(),r=state(); const ids=l.amulet.habits.map(h=>h.id);
+  l.amulet.habitOrder={ids:copy(ids).reverse(),updatedAt:`${day}T11:00:00.000Z`};
+  r.amulet.habitOrder={ids:copy(ids),updatedAt:`${day}T10:00:00.000Z`};
+  assert.deepEqual(safe(null,l,r).state.amulet.habitOrder,l.amulet.habitOrder);
+  assert.deepEqual(safe(null,r,l).state.amulet.habitOrder,l.amulet.habitOrder);
+});
+test('older clients cannot erase saved Amulet ordering by omitting its field',()=>{
+  const b=state(); const ids=b.amulet.habits.map(h=>h.id).reverse();
+  b.amulet.habitOrder={ids,updatedAt:`${day}T09:00:00.000Z`};
+  const l=copy(b),r=copy(b); delete l.amulet.habitOrder;
+  l.amulet.ledger.push(earn('legacy-completion'));
+  const forward=safe(b,l,r),backward=safe(b,r,l);
+  assert.deepEqual(forward.state.amulet.habitOrder,b.amulet.habitOrder);
+  assert.deepEqual(backward.state.amulet.habitOrder,b.amulet.habitOrder);
+  assert.equal(wallet(forward.state),1000);
+});
+test('unstamped default ordering from a legacy snapshot cannot erase a saved reorder',()=>{
+  const b=state(); const ids=b.amulet.habits.map(h=>h.id).reverse();
+  b.amulet.habitOrder={ids,updatedAt:`${day}T09:00:00.000Z`};
+  const l=copy(b),r=copy(b); l.amulet.habitOrder={ids:[],updatedAt:''};
+  assert.deepEqual(safe(b,l,r).state.amulet.habitOrder,b.amulet.habitOrder);
+  assert.deepEqual(safe(b,r,l).state.amulet.habitOrder,b.amulet.habitOrder);
+});
 console.log(`${passed} snapshot merge tests passed`);

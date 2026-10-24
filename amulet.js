@@ -16,6 +16,8 @@
   let lastToday = today();
 
   const icons = {
+    up: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 14 6-6 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    down: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 10 6 6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     check: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     plus: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
     edit: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15.5 4.5 4 4M4 20l4.5-1 11-11a2.8 2.8 0 0 0-4-4l-11 11L4 20Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -77,7 +79,7 @@
     return {
       version: 2, startedOn: start,
       habits: specs.map(([id, name, kr, days]) => ({ id: `am_${id}`, name, rewardOre: kr * 100, days: [...days], targetPerWeek: days.length, createdOn: start, archivedOn: null, versions: [{ from: start, name, rewardOre: kr * 100, days: [...days], targetPerWeek: days.length }] })),
-      ledger: [], wishlist: [],
+      habitOrder: { ids: [], updatedAt: "" }, ledger: [], wishlist: [],
     };
   }
 
@@ -186,7 +188,31 @@
       eventIds.add(id);
       eventsById.set(id, event);
     }
-    return { version: 2, startedOn, habits, ledger, wishlist };
+    const ids = [...new Set((Array.isArray(raw.habitOrder?.ids) ? raw.habitOrder.ids : []).filter(id => habitById.has(id)))];
+    const orderTime = typeof raw.habitOrder?.updatedAt === "string" ? Date.parse(raw.habitOrder.updatedAt) : NaN;
+    const habitOrder = { ids, updatedAt: Number.isFinite(orderTime) ? new Date(orderTime).toISOString() : "" };
+    return { version: 2, startedOn, habits, habitOrder, ledger, wishlist };
+  }
+
+  // Order is separate from habit definitions and dated versions, so rearranging
+  // a checklist cannot change past completions, schedules or wallet earnings.
+  function orderedHabits(slice) {
+    const positions = new Map((slice.habitOrder?.ids || []).map((id, index) => [id, index]));
+    return [...slice.habits].sort((a, b) => (positions.get(a.id) ?? Infinity) - (positions.get(b.id) ?? Infinity));
+  }
+  function moveHabit(slice, id, direction) {
+    if (direction !== -1 && direction !== 1) return false;
+    const all = orderedHabits(slice);
+    const active = all.filter(h => !h.archivedOn);
+    const index = active.findIndex(h => h.id === id);
+    const destination = index + direction;
+    if (index < 0 || destination < 0 || destination >= active.length) return false;
+    [active[index], active[destination]] = [active[destination], active[index]];
+    // Include unscheduled habits as well: the chosen order is the same on every day.
+    const ids = [...active, ...all.filter(h => h.archivedOn)].map(h => h.id);
+    const previousTime = Date.parse(slice.habitOrder?.updatedAt || "") || 0;
+    slice.habitOrder = { ids, updatedAt: new Date(Math.max(Date.now(), previousTime + 1)).toISOString() };
+    return true;
   }
 
   function versionAt(habit, date) {
@@ -393,6 +419,7 @@
     renderHabits(slice, view);
     renderChart(slice, view);
     renderWishes(slice, view);
+    if (dialogContext?.type === "manage" && $("am-dialog").open) renderManageHabits();
   }
 
   function renderDays(slice, view) {
@@ -415,7 +442,7 @@
     return `${version.days.map(d => DAY_NAMES[d]).join(", ")}${version.targetPerWeek < version.days.length ? ` · ${version.targetPerWeek} / week` : ""}`;
   }
   function renderHabits(slice, view) {
-    const visible = slice.habits.filter(h => (isScheduled(h, selectedDate) || view.completions.has(`${h.id}|${selectedDate}`)) && (!h.archivedOn || selectedDate < today() || view.completions.has(`${h.id}|${selectedDate}`)));
+    const visible = orderedHabits(slice).filter(h => (isScheduled(h, selectedDate) || view.completions.has(`${h.id}|${selectedDate}`)) && (!h.archivedOn || selectedDate < today() || view.completions.has(`${h.id}|${selectedDate}`)));
     updateHabitRows($("am-habit-list"), visible.length ? visible.map(habit => {
       const version = versionAt(habit, selectedDate);
       const complete = view.completions.get(`${habit.id}|${selectedDate}`);
@@ -496,8 +523,44 @@
     openDialog(habit ? "Edit habit" : "Add habit", `<form class="am-form" data-am-form="habit"><div class="am-field"><label for="am-habit-name-input">Habit name</label><input id="am-habit-name-input" name="name" type="text" maxlength="100" placeholder="Habit name" value="${escapeHTML(current.name)}" autocomplete="off" required autofocus></div><div class="am-field"><label for="am-habit-reward-input">Reward per completion <span>KR</span></label><input id="am-habit-reward-input" name="reward" type="text" inputmode="decimal" value="${inputMoney(current.rewardOre)}" required><p class="am-field-note">Once per day.</p></div><fieldset class="am-field am-schedule"><legend>Available on</legend><div class="am-schedule-days">${[1, 2, 3, 4, 5, 6, 0].map(d => `<label class="am-schedule-day"><input type="checkbox" name="day" value="${d}" ${current.days.includes(d) ? "checked" : ""}><span>${DAY_NAMES[d]}</span></label>`).join("")}</div></fieldset><div class="am-field"><label for="am-habit-target-input">Weekly goal <span>days</span></label><input id="am-habit-target-input" name="target" type="number" min="1" max="${current.days.length}" step="1" value="${current.targetPerWeek}" required><p class="am-field-note">Progress target. Each completion earns its reward.</p></div>${habit ? '<p class="am-field-note">Changes apply from today.</p>' : '<p class="am-field-note">Starts today.</p>'}${formFooter(habit ? "Save habit" : "Add habit")}${habit ? '<button type="button" class="am-delete-link" data-am-action="remove-habit" data-id="' + habit.id + '">Remove habit</button>' : ""}</form>`, { type: "habit", id });
   }
   function openManageHabits() {
-    const active = state().habits.filter(h => !h.archivedOn);
-    openDialog("Manage habits", `<div class="am-manage-list">${active.map(habit => `<button type="button" class="am-manage-habit" data-am-action="edit-habit" data-id="${habit.id}"><span class="am-habit-copy"><span class="am-habit-name">${escapeHTML(habit.name)}</span><span class="am-habit-meta">${money(habit.rewardOre)} · ${escapeHTML(scheduleLabel(habit))}</span></span><span class="am-manage-edit" aria-hidden="true">${icons.edit}</span></button>`).join("") || '<p class="am-muted">No habits.</p>'}</div><button type="button" class="am-button am-button-primary am-manage-add" data-am-action="add-habit">${icons.plus} Add habit</button>`, { type: "manage" });
+    openDialog("Manage habits", `<div class="am-manage-toolbar"><button type="button" class="am-text-button" data-am-action="reorder-habits" aria-pressed="false">Reorder</button></div><div class="am-manage-list" id="am-manage-list" role="list" aria-label="Habit order"></div><p class="am-live-region" id="am-order-status" role="status" aria-live="polite" aria-atomic="true"></p><button type="button" class="am-button am-button-primary am-manage-add" data-am-action="add-habit">${icons.plus} Add habit</button>`, { type: "manage", reordering: false });
+    renderManageHabits();
+  }
+  function renderManageHabits() {
+    const active = orderedHabits(state()).filter(h => !h.archivedOn);
+    const reordering = dialogContext.reordering;
+    const toggle = $("am-dialog-body").querySelector('[data-am-action="reorder-habits"]');
+    toggle.textContent = reordering ? "Done" : "Reorder";
+    toggle.setAttribute("aria-pressed", String(reordering));
+    updateHabitRows($("am-manage-list"), active.map((habit, index) => {
+      const copy = `<span class="am-habit-copy"><span class="am-habit-name">${escapeHTML(habit.name)}</span><span class="am-habit-meta">${money(habit.rewardOre)} · ${escapeHTML(scheduleLabel(habit))}</span></span>`;
+      const controls = reordering
+        ? `<div class="am-order-controls"><button type="button" class="am-icon-button" data-am-action="move-habit-up" data-id="${habit.id}" aria-label="Move ${escapeHTML(habit.name)} up" ${index === 0 ? "disabled" : ""}>${icons.up}</button><button type="button" class="am-icon-button" data-am-action="move-habit-down" data-id="${habit.id}" aria-label="Move ${escapeHTML(habit.name)} down" ${index === active.length - 1 ? "disabled" : ""}>${icons.down}</button></div>`
+        : "";
+      return `<div class="am-manage-row${reordering ? " is-reordering" : ""}" data-am-habit="${habit.id}" role="listitem" aria-posinset="${index + 1}" aria-setsize="${active.length}">${reordering ? copy : `<button type="button" class="am-manage-habit" data-am-action="edit-habit" data-id="${habit.id}">${copy}<span class="am-manage-edit" aria-hidden="true">${icons.edit}</span></button>`}${controls}</div>`;
+    }).join("") || '<p class="am-muted am-manage-empty">No habits.</p>');
+  }
+  function moveManagedHabit(id, direction) {
+    if (dialogContext?.type !== "manage" || !dialogContext.reordering) return;
+    const list = $("am-manage-list");
+    const before = new Map([...list.children].map(row => [row.dataset.amHabit, row.offsetTop]));
+    if (!moveHabit(state(), id, direction)) return;
+    save();
+    const moved = [...list.children].find(row => row.dataset.amHabit === id);
+    const action = direction < 0 ? "move-habit-up" : "move-habit-down";
+    const control = moved?.querySelector(`[data-am-action="${action}"]`);
+    // At either edge, keep focus on the moved row's remaining enabled control.
+    (control?.disabled ? moved.querySelector("button:not(:disabled)") : control)?.focus({ preventScroll: true });
+    moved?.scrollIntoView({ block: "nearest", behavior: "instant" });
+    const active = orderedHabits(state()).filter(h => !h.archivedOn);
+    const position = active.findIndex(h => h.id === id);
+    $("am-order-status").textContent = `${active[position].name}, position ${position + 1} of ${active.length}. Saved.`;
+    if (!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      for (const row of list.children) {
+        const offset = before.get(row.dataset.amHabit) - row.offsetTop;
+        if (offset) row.animate?.([{ transform: `translateY(${offset}px)` }, { transform: "translateY(0)" }], { duration: 180, easing: "cubic-bezier(.2,.8,.2,1)" });
+      }
+    }
   }
   function openWish(id) {
     const view = ledgerView(state());
@@ -548,6 +611,11 @@
     if (action === "previous-week" || action === "next-week") { selectedDate = shiftDate(selectedDate, action === "previous-week" ? -7 : 7); if (selectedDate > today()) selectedDate = today(); render(); }
     if (action === "add-habit") openHabit();
     if (action === "manage-habits") openManageHabits();
+    if (action === "reorder-habits" && dialogContext?.type === "manage") {
+      dialogContext.reordering = !dialogContext.reordering;
+      renderManageHabits();
+    }
+    if (action === "move-habit-up" || action === "move-habit-down") moveManagedHabit(id, action === "move-habit-up" ? -1 : 1);
     if (action === "edit-habit") openHabit(id);
     if (action === "add-wish") openWish();
     if (action === "edit-wish") openWish(id);
@@ -665,7 +733,7 @@
 
   function hasData(slice) {
     if (!slice || typeof slice !== "object") return false;
-    if (slice.ledger?.length || slice.wishlist?.length) return true;
+    if (slice.ledger?.length || slice.wishlist?.length || slice.habitOrder?.ids?.length) return true;
     if (!Array.isArray(slice.habits)) return false;
     const defaults = defaultState().habits;
     if (slice.habits.length !== defaults.length) return true;
@@ -676,5 +744,5 @@
   }
   window.Amulet = { buildTemplate: defaultState, normalize, mount, render, hasData,
     // Pure operations are also exposed for regression testing of wallet math.
-    model: { ledgerView, refundWithdrawal, goalStats, parseAmount, isScheduled, versionAt, today, shiftDate } };
+    model: { ledgerView, refundWithdrawal, goalStats, parseAmount, isScheduled, versionAt, today, shiftDate, orderedHabits, moveHabit } };
 })();

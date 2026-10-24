@@ -1,6 +1,6 @@
-const APP_VERSION = "20261022a";
-const CACHE_NAME = "discipline-os-cache-v39";
-const APP_ASSETS = ["./", "./index.html", "./styles.css?v=20261019b", "./cloud-config.js?v=20260214", "./sync-merge.js?v=20261022a", "./app.js?v=20261022a", "./manifest.webmanifest?v=20261017k", "./apple-touch-icon.png?v=20261017k", "./icons/amulet.svg?v=20261017k", "./icons/amulet-192.png?v=20261017k", "./icons/amulet-512.png?v=20261017k", "./amulet.css?v=20261019b", "./amulet.js?v=20261019b", "./ui.css?v=20261019b", "./ui.js?v=20261019b"];
+const APP_VERSION = "20261024a";
+const CACHE_NAME = "discipline-os-cache-v40";
+const APP_ASSETS = ["./", "./index.html", "./styles.css?v=20261019b", "./cloud-config.js?v=20260214", "./sync-merge.js?v=20261024a", "./app.js?v=20261024a", "./manifest.webmanifest?v=20261017k", "./apple-touch-icon.png?v=20261017k", "./icons/amulet.svg?v=20261017k", "./icons/amulet-192.png?v=20261017k", "./icons/amulet-512.png?v=20261017k", "./amulet.css?v=20261024a", "./amulet.js?v=20261024a", "./ui.css?v=20261019b", "./ui.js?v=20261019b"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

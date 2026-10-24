@@ -48,10 +48,10 @@ async function test(name, run) { await run(); console.log(`ok ${++passed} - ${na
     const urls = [
       'https://example.test/Habit-tracker/',
       'https://example.test/Habit-tracker/?v=20261020a&view=amulet#today',
-      'https://example.test/Habit-tracker/?v=20261022a',
+      'https://example.test/Habit-tracker/?v=20261024a',
     ];
     const h = harness({
-      keys: ['old-cache', 'discipline-os-cache-v39'],
+      keys: ['old-cache', 'discipline-os-cache-v40'],
       remove: () => cleanup.promise,
       claim: () => claimed.promise,
       pages: urls.map(url => ({ url, navigate: async target => { visits.push(target); } })),
@@ -67,8 +67,8 @@ async function test(name, run) { await run(); console.log(`ok ${++passed} - ${na
     claimed.resolve(); await activation;
     assert.deepEqual(h.events.filter(e => e[0] === 'matchAll'), [['matchAll', { type:'window' }]]);
     assert.deepEqual(visits, [
-      'https://example.test/Habit-tracker/?v=20261022a',
-      'https://example.test/Habit-tracker/?v=20261022a&view=amulet#today',
+      'https://example.test/Habit-tracker/?v=20261024a',
+      'https://example.test/Habit-tracker/?v=20261024a&view=amulet#today',
     ]);
   });
   await test('a closed old page cannot reject activation or block another page update', async () => {
@@ -78,11 +78,11 @@ async function test(name, run) { await run(); console.log(`ok ${++passed} - ${na
       {url:'https://example.test/Habit-tracker/', navigate: async url => { visits.push(url); }},
     ] });
     await h.dispatch('activate');
-    assert.deepEqual(visits, ['https://example.test/Habit-tracker/?v=20261022a']);
+    assert.deepEqual(visits, ['https://example.test/Habit-tracker/?v=20261024a']);
   });
   await test('an already current page does not navigate or reload', async () => {
     let visits = 0;
-    const h = harness({pages:[{url:'https://example.test/Habit-tracker/?v=20261022a&other=1#history',navigate:async()=>{visits++;}}]});
+    const h = harness({pages:[{url:'https://example.test/Habit-tracker/?v=20261024a&other=1#history',navigate:async()=>{visits++;}}]});
     await h.dispatch('activate'); assert.equal(visits,0);
   });
   await test('install waits for all current app and merge assets before skipping the old worker', async () => {
